@@ -18,7 +18,7 @@ DATA_PATH = os.path.join(__file__, "../data")
 # --- Simulation Functions ---
 #
 
-def integrate_rk4(f, x0, t0, tf, h, u_traj, tspan=None):
+def integrate_rk4(f, x0, t0, tf, h, u_traj, tspan=None, tsync='const'):
     """
     RK4 integration and simulator
 
@@ -28,6 +28,8 @@ def integrate_rk4(f, x0, t0, tf, h, u_traj, tspan=None):
         t0: Initial simulation time
         tf: Ending simulation time
         h: Timestep
+        tspan: If given a preexisting time series, can optionally use that instead
+        tsync: Time synchronization, either at constant or variable timestep - 'const' | 'var'
     """
     def rk4(f, x, u, t, h):
         k1 = f(x, t, u)
@@ -43,11 +45,14 @@ def integrate_rk4(f, x0, t0, tf, h, u_traj, tspan=None):
     prev_time = tspan[0]
     prev_control = u_traj
     for (i, t), u in zip(enumerate(tspan), u_traj):
-        # Control signals are not commanded at a fixed timestep.
-        # We can simulate at a fixed timestep, but send commands at proper times. In this implementation
-        # the previous command is held onto, and used if it is still commanded at the current t.
-        if (not i == 0) and (prev_time + h < t):
-            u = prev_control
+        if tsync == 'const':
+            # Control signals are not commanded at a fixed timestep.
+            # We can simulate at a fixed timestep, but send commands at proper times. In this implementation
+            # the previous command is held onto, and used if it is still commanded at the current t.
+            if (not i == 0) and (prev_time + h < t):
+                u = prev_control
+        else:
+            h = t - prev_time  
         sim[i] = x
         x = rk4(f, x, u, t, h)
         prev_time = t

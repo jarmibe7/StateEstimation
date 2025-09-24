@@ -17,7 +17,6 @@ DATA_PATH = os.path.join(__file__, "../data")
 #
 # --- Simulation Functions ---
 #
-
 def integrate_rk4(f, x0, t0, tf, h, u_traj, tspan=None, tsync='const'):
     """
     RK4 integration and simulator
@@ -46,7 +45,7 @@ def integrate_rk4(f, x0, t0, tf, h, u_traj, tspan=None, tsync='const'):
     prev_control = u_traj
     for (i, t), u in zip(enumerate(tspan), u_traj):
         if tsync == 'const':
-            # Control signals are not commanded at a fixed timestep.
+            # Control signals are not logged at a fixed timestep.
             # We can simulate at a fixed timestep, but send commands at proper times. In this implementation
             # the previous command is held onto, and used if it is still commanded at the current t.
             if (not i == 0) and (prev_time + h < t):
@@ -109,7 +108,7 @@ def q2():
     tf = 5.0
     h = 0.01
     u_traj = gen_u_traj_test(h) # Generate control trajectory
-    tspan, x_traj = integrate_rk4(dynamics, x0, t0, tf, h, u_traj)
+    tspan, x_traj = integrate_rk4(dynamics, x0, t0, tf, h, u_traj, tsync='const')
 
     _ = plot_wheeled_robot([(x_traj, 'Robot Trajectory')], "Wheeled Robot Trajectory in X-Y Plane (Q2)", "q2.png")
     print("Done\n")
@@ -128,7 +127,7 @@ def q3():
     tf = u_df['time'].iloc[-1]
     h = 1/67.0  # Odometry logged at 67 Hz
     u_traj = np.array(u_df.iloc[:, 1:])
-    tspan, x_traj = integrate_rk4(dynamics, x0, t0, tf, h, u_traj, tspan=u_df['time'])
+    tspan, x_traj = integrate_rk4(dynamics, x0, t0, tf, h, u_traj, tspan=u_df['time'], tsync='var')
 
     # Plotting
     trajectories = [

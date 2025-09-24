@@ -1,0 +1,145 @@
+"""
+run.py
+
+Main script for HW0 of ME 469 at Northwestern University.
+
+Author: Jared Berry
+Date: 09/19/2025
+""" 
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import os
+
+PLOT_PATH = os.path.join(__file__, "../plots")
+DATA_PATH = os.path.join(__file__, "../data")
+
+#
+# --- Simulation Functions ---
+#
+
+def integrate_rk4(f, x0, t0, tf, h, u_traj, tspan=None):
+    """
+    RK4 integration and simulator
+
+    Args:
+        f: Dynamics function
+        x0: Initial state
+        t0: Initial simulation time
+        tf: Ending simulation time
+        h: Timestep
+    """
+    def rk4(f, x, u, t, h):
+        k1 = f(x, t, u)
+        k2 = f(x + h*k1/2.0, t + h/2.0, u)
+        k3 = f(x + h*k2/2.0, t + h/2.0, u)
+        k4 = f(x + h*k3, t + h, u)
+        return x + h*(k1/6.0 + k2/3.0 + k3/3.0 + k4/6.0)
+    
+    if tspan is None: tspan = np.arange(start=t0, stop=tf, step=h)
+    assert tspan.shape[0] == u_traj.shape[0]
+    x = x0
+    sim = np.zeros((len(tspan), len(x0)))
+    prev_time = tspan[0]
+    prev_control = u_traj
+    for (i, t), u in zip(enumerate(tspan), u_traj):
+        # Control signals are not commanded at a fixed timestep.
+        # We can simulate at a fixed timestep, but send commands at proper times. In this implementation
+        # the previous command is held onto, and used if it is still commanded at the current t.
+        if (not i == 0) and (prev_time + h < t):
+            u = prev_control
+        sim[i] = x
+        x = rk4(f, x, u, t, h)
+        prev_time = t
+        prev_control = u
+    return tspan, sim
+
+def gen_u_traj_test(h):
+    """
+    Generate test control trajectory for q2
+    """
+    seg_length = int(1.0 / h)
+    straight = np.tile(np.array([0.5, 0.0]), (seg_length, 1))
+    right_turn = np.tile(np.array([0.0, -1.0/(2.0*np.pi)]), (seg_length, 1))
+    left_turn = -right_turn
+
+    return np.vstack([straight, right_turn, straight, left_turn, straight])
+
+def dynamics(x, t, u):
+    """
+    Motion model for planar wheeled robot.
+
+    Args:
+        x: State at current timestep
+        t: Current timestep
+        u_func: Control signal at current timestep
+    """
+    u_mult = np.array([u[0], u[0], u[1]])
+    xdot = np.array([np.cos(x[2]), np.sin(x[2]), 1])
+    return xdot * u_mult
+
+def plot_wheeled_robot(trajectories, title, filename):
+    """
+    Plot the trajectory followed by a wheeled robot in the X-Y Plane
+    """
+    fig, ax = plt.subplots(1, 1, figsize=(8,4), tight_layout=True)
+    for traj, label in trajectories:    # Plot multiple trajectories
+        ax.plot(traj[:, 0], traj[:, 1], label=label)
+    plt.title(title)
+    plt.xlabel("x-position")
+    plt.ylabel("y-position")
+    plt.legend()
+    fig_path = os.path.join(PLOT_PATH, filename)
+    plt.savefig(fig_path)
+    return fig
+
+#
+# --- Questions ---
+#
+def q2():
+    print("Running question 2...", end="")
+    # Simulation conditions and run simulation
+    x0 = np.zeros((3,))
+    t0 = 0.0
+    tf = 5.0
+    h = 0.01
+    u_traj = gen_u_traj_test(h) # Generate control trajectory
+    tspan, x_traj = integrate_rk4(dynamics, x0, t0, tf, h, u_traj)
+
+    _ = plot_wheeled_robot([(x_traj, 'Robot Trajectory')], "Wheeled Robot Trajectory in X-Y Plane (Q2)", "q2.png")
+    print("Done\n")
+
+def q3():
+    print("Running question 3...", end="")
+    # Read controls and ground truth data
+    controls_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Control.dat')
+    u_df = pd.read_csv(controls_data_path, sep=r"\s+", comment="#", header=None, names=["time", "vel", "omega"])
+    truth_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Groundtruth.dat')
+    ground_truth = pd.read_csv(truth_data_path, sep=r"\s+", comment="#", header=None, names=["time", "x", "y", "theta"])
+    
+    # Simulation conditions and run simulation
+    x0 = np.array(ground_truth.iloc[0][1:])
+    t0 = u_df['time'].iloc[0]
+    tf = u_df['time'].iloc[-1]
+    h = 1/67.0  # Odometry logged at 67 Hz
+    u_traj = np.array(u_df.iloc[:, 1:])
+    tspan, x_traj = integrate_rk4(dynamics, x0, t0, tf, h, u_traj, tspan=u_df['time'])
+
+    # Plotting
+    trajectories = [
+        (x_traj, 'Dead-Reckoned'),
+        (np.array(ground_truth.iloc[:, 1:]), 'Ground Truth')
+    ]
+    _ = plot_wheeled_robot(trajectories, "Dead-Reckoned and Ground Truth Trajectories - ds0 (Q3)", "q3.png")
+    print("Done\n")
+
+def main():
+    print("*** STARTING ***\n")
+    q2()
+    q3()
+    
+    print("\n*** DONE ***")
+    return
+
+if __name__ == "__main__":
+    main()

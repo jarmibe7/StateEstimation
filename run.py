@@ -15,6 +15,29 @@ PLOT_PATH = os.path.join(__file__, "../plots")
 DATA_PATH = os.path.join(__file__, "../data")
 
 #
+# --- Measurement ---
+#
+def measurement_model(xt, landmarks_truth, subj):
+    """
+    Measurement model based on range-bearing model on page 940 of
+    Artifical Intelligence: A Modern Approach by Norvig et al.
+
+    Args:
+        xt: State at current timestep
+        landmarks_truth: Ground truth landmark 
+        subj: Landmark subject number
+    """
+    # Get ground truth of landmark
+    l = np.array(landmarks_truth.loc[landmarks_truth["subject"] == subj]).flatten()[1:]
+
+    # Get average measuremnts
+    mu_range = np.linalg.norm(xt[0:2] - l[0:2])
+    mu_bearing = np.arctan((l[1] - xt[1]) / (l[0] / xt[0])) - xt[2]
+
+    # TODO: Sample measurement from distribution, but for now just return mean
+    return np.array([mu_range, mu_bearing]), l
+
+#
 # --- Simulation Functions ---
 #
 def integrate_rk4(f, x0, t0, tf, h, u_traj, tspan=None, tsync='const'):
@@ -41,7 +64,7 @@ def integrate_rk4(f, x0, t0, tf, h, u_traj, tspan=None, tsync='const'):
     assert tspan.shape[0] == u_traj.shape[0]
     x = x0
     sim = np.zeros((len(tspan), len(x0)))
-    prev_time = tspan[0]
+    prev_time = tspan[0] - h
     prev_control = u_traj
     for (i, t), u in zip(enumerate(tspan), u_traj):
         if tsync == 'const':
@@ -137,10 +160,57 @@ def q3():
     _ = plot_wheeled_robot(trajectories, "Dead-Reckoned and Ground Truth Trajectories - ds0 (Q3)", "q3.png")
     print("Done\n")
 
+def q6():
+    print("Running question 6...", end="")
+    # Read ground truth landmark data
+    landmarks_truth_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Landmark_Groundtruth.dat')
+    landmarks_truth = pd.read_csv(landmarks_truth_data_path, sep=r"\s+", comment="#", header=None, names=["subject", "x", "y", "x_sig", "y_sig"])
+
+    # Take test measurements
+    test_landmarks = [
+        (np.array([2, 3, 0]), 6), 
+        (np.array([0, 3, 0]), 13), 
+        (np.array([1, -2, 0]), 17)
+    ]
+    measured_landmarks = []
+    true_landmarks = []
+    for xt, subj in test_landmarks:
+        zt, l = measurement_model(xt, landmarks_truth, subj)
+        measured_landmarks.append(zt)
+        true_landmarks.append(l)
+
+    # Plot measurements and ground truth
+    fig, ax = plt.subplots(1, 1, figsize=(10,4), tight_layout=True)
+    colors = ['red', 'green', 'blue']
+    for zt, l, (xt, subj), c in zip(measured_landmarks, true_landmarks, test_landmarks, colors):
+        ax.plot(l[0], l[1], linestyle='', marker='x', markersize=8, color=c, label=f'True Landmark {subj}')
+
+        # Plot robot location and heading
+        ax.plot(xt[0], xt[1], linestyle='', marker='h', markersize=8, color=c, label=f'Robot (Landmark {subj})')
+        th_x = xt[0] + 0.07*np.cos(xt[2])
+        th_y = xt[1] + 0.07*np.sin(xt[2])
+        ax.plot(th_x, th_y, linestyle='', marker='*', markersize=5, color=c, label=f'Robot (Landmark {subj})')
+
+        # Determine landmark position from range and bearing
+        zt_x = xt[0] + zt[0]*np.cos(zt[1])
+        zt_y = xt[1] + zt[0]*np.sin(zt[1])
+        ax.plot(zt_x, zt_y, linestyle='', marker='o', markersize=8, color=c, label=f'Measured Landmark {subj}')
+
+    # Move legend outside plot
+    ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+    plt.title('Comparison of Measured and Ground Truth Landmark Positions')
+    plt.xlabel("x-position")
+    plt.ylabel("y-position")
+    # plt.legend()
+    fig_path = os.path.join(PLOT_PATH, 'q6.png')
+    plt.savefig(fig_path)
+    print("Done\n")
+
 def main():
     print("*** STARTING ***\n")
     q2()
     q3()
+    q6()
     
     print("\n*** DONE ***")
     return

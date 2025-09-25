@@ -176,6 +176,7 @@ def q6():
     true_landmarks = []
     for xt, subj in test_landmarks:
         zt, l = measurement_model(xt, landmarks_truth, subj)
+        print(f'Measured Landmark {subj}: ({zt[0]}, {zt[1]})')
         measured_landmarks.append(zt)
         true_landmarks.append(l)
 

@@ -189,6 +189,7 @@ def q6():
         true_landmarks.append(l)
 
     # Plot measurements and ground truth
+    print("Done\n")
     fig, ax = plt.subplots(1, 1, figsize=(10,4), tight_layout=True)
     colors = ['red', 'green', 'blue']
     for zt, l, (xt, subj), c in zip(measured_landmarks, true_landmarks, test_landmarks, colors):
@@ -205,6 +206,12 @@ def q6():
         zt_y = xt[1] + zt[0]*np.sin(zt[1])
         ax.plot(zt_x, zt_y, linestyle='', marker='o', markersize=8, color=c, label=f'Measured Landmark {subj}')
 
+        print(
+            f'Landmark {subj:2d} | '
+            f'Raw Measurements: ({zt[0]:.4f}, {zt[1]:.4f}) '
+            f'Predictions: ({zt_x:.4f}, {zt_y:.4f}) '
+            f'Error: ({(np.abs(zt_x) - np.abs(l[0])):.4f}, {(np.abs(zt_y) - np.abs(l[1])):.4f})'
+        )
     # Move legend outside plot
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     plt.title('Comparison of Measured and Ground Truth Landmark Positions')
@@ -213,9 +220,7 @@ def q6():
     # plt.legend()
     fig_path = os.path.join(PLOT_PATH, 'q6.png')
     plt.savefig(fig_path)
-    print("Done\n")
-    for zt, (xt, subj) in zip(measured_landmarks, test_landmarks):
-        print(f'Landmark {subj} Measurements: ({zt[0]}, {zt[1]})')
+        
 
 def main():
     print("*** STARTING ***\n")

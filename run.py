@@ -31,9 +31,8 @@ def measurement_model(xt, landmarks_truth, subj):
 
     # Get average measuremnts
     mu_range = np.linalg.norm(xt[0:2] - l[0:2])
-    mu_bearing = np.atan2(l[1] - xt[1], l[0] - xt[0]) - xt[2]
+    mu_bearing = np.arctan2(l[1] - xt[1], l[0] - xt[0]) - xt[2]
 
-    # TODO: Sample measurement from distribution, but for now just return mean
     return np.array([mu_range, mu_bearing]), l
 
 #

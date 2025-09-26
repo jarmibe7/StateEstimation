@@ -11,3 +11,5 @@ python run.py
 '''
 
 Plots for questions 2, 3, and 6 will populate in /plots, and data (ds0) is located in /data.
+
+Additionally, measurements for question 6 will be printed to the terminal.

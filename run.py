@@ -19,8 +19,7 @@ DATA_PATH = os.path.join(__file__, "../data")
 #
 def measurement_model(xt, landmarks_truth, subj):
     """
-    Measurement model based on range-bearing model on page 940 of
-    Artifical Intelligence: A Modern Approach by Norvig et al.
+    Range-bearing measurement model
 
     Args:
         xt: State at current timestep
@@ -32,7 +31,7 @@ def measurement_model(xt, landmarks_truth, subj):
 
     # Get average measuremnts
     mu_range = np.linalg.norm(xt[0:2] - l[0:2])
-    mu_bearing = np.arctan((l[1] - xt[1]) / (l[0] / xt[0])) - xt[2]
+    mu_bearing = np.atan2(l[1] - xt[1], l[0] - xt[0]) - xt[2]
 
     # TODO: Sample measurement from distribution, but for now just return mean
     return np.array([mu_range, mu_bearing]), l
@@ -109,9 +108,20 @@ def plot_wheeled_robot(trajectories, title, filename):
     """
     Plot the trajectory followed by a wheeled robot in the X-Y Plane
     """
+    # Plot path
     fig, ax = plt.subplots(1, 1, figsize=(8,4), tight_layout=True)
-    for traj, label in trajectories:    # Plot multiple trajectories
-        ax.plot(traj[:, 0], traj[:, 1], label=label)
+    for traj, label, display_robot, color, offset in trajectories:    # Plot multiple trajectories
+        ax.plot(traj[:, 0], traj[:, 1], label=label, color=color)
+
+        if display_robot:
+            for i, xt in enumerate(traj):
+                if i % (traj.shape[0] // 25) == 0 or i == 0:
+                    # Plot robot location and heading
+                    ax.plot(xt[0], xt[1], linestyle='', marker='h', markersize=8, color=color)
+                    th_x = xt[0] + offset*np.cos(xt[2])
+                    th_y = xt[1] + offset*np.sin(xt[2])
+                    ax.plot(th_x, th_y, linestyle='', marker='*', markersize=5, color=color)
+        
     plt.title(title)
     plt.xlabel("x-position")
     plt.ylabel("y-position")
@@ -133,7 +143,7 @@ def q2():
     u_traj = gen_u_traj_test(h) # Generate control trajectory
     tspan, x_traj = integrate_rk4(dynamics, x0, t0, tf, h, u_traj, tsync='const')
 
-    _ = plot_wheeled_robot([(x_traj, 'Robot Trajectory')], "Wheeled Robot Trajectory in X-Y Plane (Q2)", "q2.png")
+    _ = plot_wheeled_robot([(x_traj, 'Robot Trajectory', True, 'blue', 0.02)], "Wheeled Robot Trajectory in X-Y Plane (Q2)", "q2.png")
     print("Done\n")
 
 def q3():
@@ -154,8 +164,8 @@ def q3():
 
     # Plotting
     trajectories = [
-        (x_traj, 'Dead-Reckoned'),
-        (np.array(ground_truth.iloc[:, 1:]), 'Ground Truth')
+        (x_traj, 'Dead-Reckoned', True, 'blue', 0.2),
+        (np.array(ground_truth.iloc[:, 1:]), 'Ground Truth', True, 'orange', 0.2)
     ]
     _ = plot_wheeled_robot(trajectories, "Dead-Reckoned and Ground Truth Trajectories - ds0 (Q3)", "q3.png")
     print("Done\n")
@@ -176,7 +186,6 @@ def q6():
     true_landmarks = []
     for xt, subj in test_landmarks:
         zt, l = measurement_model(xt, landmarks_truth, subj)
-        print(f'Measured Landmark {subj}: ({zt[0]}, {zt[1]})')
         measured_landmarks.append(zt)
         true_landmarks.append(l)
 
@@ -184,13 +193,13 @@ def q6():
     fig, ax = plt.subplots(1, 1, figsize=(10,4), tight_layout=True)
     colors = ['red', 'green', 'blue']
     for zt, l, (xt, subj), c in zip(measured_landmarks, true_landmarks, test_landmarks, colors):
-        ax.plot(l[0], l[1], linestyle='', marker='x', markersize=8, color=c, label=f'True Landmark {subj}')
+        ax.plot(l[0], l[1], linestyle='', marker='x', markersize=10, color=c, label=f'True Landmark {subj}')
 
         # Plot robot location and heading
         ax.plot(xt[0], xt[1], linestyle='', marker='h', markersize=8, color=c, label=f'Robot (Landmark {subj})')
         th_x = xt[0] + 0.07*np.cos(xt[2])
         th_y = xt[1] + 0.07*np.sin(xt[2])
-        ax.plot(th_x, th_y, linestyle='', marker='*', markersize=5, color=c, label=f'Robot (Landmark {subj})')
+        ax.plot(th_x, th_y, linestyle='', marker='*', markersize=5, color=c, label=f'Robot Heading (Landmark {subj})')
 
         # Determine landmark position from range and bearing
         zt_x = xt[0] + zt[0]*np.cos(zt[1])
@@ -206,6 +215,8 @@ def q6():
     fig_path = os.path.join(PLOT_PATH, 'q6.png')
     plt.savefig(fig_path)
     print("Done\n")
+    for zt, (xt, subj) in zip(measured_landmarks, test_landmarks):
+        print(f'Landmark {subj} Measurements: ({zt[0]}, {zt[1]})')
 
 def main():
     print("*** STARTING ***\n")

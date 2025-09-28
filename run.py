@@ -19,7 +19,7 @@ DATA_PATH = os.path.join(__file__, "../data")
 #
 # --- Models ---
 #
-def measurement_model(xt, landmarks_truth, subj, R=None):
+def measurement_model(xt, landmarks_truth, subj):
     """
     Range-bearing measurement model
 
@@ -37,12 +37,9 @@ def measurement_model(xt, landmarks_truth, subj, R=None):
 
     zt_det = np.array([mu_range, mu_bearing])   # Deterministic measurement
 
-    if R is None:
-        return zt_det, l
-    else:
-        return zt_det + np.random.multivariate_normal(np.zeros(2,), R), l    # Gaussian noise
+    return zt_det, l
 
-def motion_model(x, u, t, h, Q=None):
+def motion_model(x, u, t, h):
     """
     A motion model that leverages RK4 integration for improved integration
 
@@ -70,10 +67,8 @@ def motion_model(x, u, t, h, Q=None):
     k3 = f(x + h*k2/2.0, t + h/2.0, u)
     k4 = f(x + h*k3, t + h, u)
     x_det = x + h*(k1/6.0 + k2/3.0 + k3/3.0 + k4/6.0)   # Deterministic state
-    if Q is None:
-        return x_det
-    else:
-        return x_det + np.random.multivariate_normal(np.zeros((3,)), Q)    # Gaussian noise
+
+    return x_det
 
 #
 # --- Simulation and Plotting ---
@@ -229,7 +224,7 @@ def q7():
     # Plotting
     trajectories = [
         (x_traj_dr, 'Dead-Reckoned', True, 'blue', 0.2),
-        (x_traj_ekf, 'EKF', True, 'green', 0.2)
+        (x_traj_ekf, 'EKF', True, 'green', 0.2),
         (np.array(ground_truth.iloc[:, 1:]), 'Ground Truth', True, 'orange', 0.2)
     ]
     _ = plot_wheeled_robot(trajectories, "Filtering Comparison - ds0 (Q7)", "q7.png")

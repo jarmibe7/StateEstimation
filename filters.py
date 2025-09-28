@@ -41,7 +41,7 @@ def dead_reckon(u_traj, motion_model, x0, t0, tf, h, Q=None, tspan=None, tsync='
         else:
             h = t - prev_time  
         sim[i] = x
-        x = motion_model(x, u, t, h, Q=Q)
+        x = motion_model(x, u, t, h)
         prev_time = t
         prev_control = u
     return tspan, sim
@@ -78,25 +78,54 @@ def extended_kalman(u_traj,
     # Initialization
     if tspan is None: tspan = np.arange(start=t0, stop=tf, step=h)
     assert tspan.shape[0] == u_traj.shape[0]
-    x = x0
     sim = np.zeros((len(tspan), len(x0)))
-    prev_time = tspan[0] - h
+    prev_u_time = tspan[0] - h
     prev_control = u_traj
 
-    for (i, t), u in zip(enumerate(tspan), u_traj):
+    # Jacobian functions
+    def G(mut, ut, h):
+        return np.array([[1.0, 0.0, -ut[0]*h*np.sin(mut[2])],
+                         [0.0, 1.0,  ut[0]*h*np.cos(mut[2])],
+                         [0.0, 0.0,                   ut[1]]])
+    def H(mut, ut, h):
+        # xdiff = xt - 
+        return np.array([[]])
+
+    mut = x0
+    sim[0] = x0
+    sigt = np.diag(np.array([0.0001, 0.0001, 0.0001]))
+    z_index = 0
+    prev_z_time = tspan[0]
+    for (i, t), ut in zip(enumerate(tspan), u_traj):
         if tsync == 'const':
             # Control signals are not logged at a fixed timestep.
             # We can simulate at a fixed timestep, but send commands at proper times. In this implementation
             # the previous command is held onto, and used if it is still commanded at the current t.
-            if (not i == 0) and (prev_time + h < t):
-                u = prev_control
+            if (not i == 0) and (prev_u_time + h < t):
+                ut = prev_control
         else:
-            h = t - prev_time  
-        sim[i] = x
-        
-        x = motion_model(x, u, t, h, Q=Q)
-        prev_time = t
-        prev_control = u
+            h = t - prev_u_time  
+
+        # Make prediction
+        mut_bar = motion_model(mut, ut, t, h)   # Mean prediction
+        Gt = G(mut_bar, ut, h)                  # Motion model Jacobian
+        sigt_bar = Gt @ sigt @ Gt.T + R         # Variance prediction
+
+        # Check if a new measurement has been made
+        # if time at z_index < prev_z_time
+        #   zt = corresponding measurement
+
+            # Update prediction with measurement
+
+            # Save updated prediction into sim trajectory, record previous mut and sigt
+
+            # Update z_index, prev_z_time
+        # else
+            # Save un-updated prediction into sim array
+        sim[i] = mut_bar
+
+        prev_u_time = t
+        prev_control = ut
     return tspan, sim
 
 def unscented_kalman(u_traj,

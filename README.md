@@ -1,7 +1,7 @@
 # State Estimation Filters
-## ME 469: HW0 Part A
-## Author: Jared Berry
-## Due: 09/26/2025
+ME 469: HW0 Part A
+Author: Jared Berry
+Due: 09/26/2025
 
 Hello!
 

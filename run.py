@@ -204,11 +204,18 @@ def q6():
 
 def q7():
     print("Running question 7...", end="")
-    # Read controls and ground truth data
+    # Read data
     controls_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Control.dat')
     u_df = pd.read_csv(controls_data_path, sep=r"\s+", comment="#", header=None, names=["time", "vel", "omega"])
+    landmarks_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Landmark_Groundtruth.dat')
+    landmarks = pd.read_csv(landmarks_data_path, sep=r"\s+", comment="#", header=None, names=["subject", "x", "y", "x_sig", "y_sig"])
     truth_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Groundtruth.dat')
     ground_truth = pd.read_csv(truth_data_path, sep=r"\s+", comment="#", header=None, names=["time", "x", "y", "theta"])
+    measurement_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Measurement.dat')
+    z_df = pd.read_csv(measurement_data_path, sep=r"\s+", comment="#", header=None, names=["time", "barcode", "range", "bearing"])
+    barcodes_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Barcodes.dat')
+    barcodes_df = pd.read_csv(barcodes_data_path, sep=r"\s+", comment="#", header=None, names=["subject", "barcodes"])
+    subject_dict = barcodes_df.set_index("barcodes")["subject"].to_dict()   # Map barcodes to subject number
     
     # Simulation conditions and run simulation
     x0 = np.array(ground_truth.iloc[0][1:])
@@ -216,10 +223,11 @@ def q7():
     tf = u_df['time'].iloc[-1]
     h = 1/67.0  # Odometry logged at 67 Hz
     u_traj = np.array(u_df.iloc[:, 1:])
-    Q = np.diag(np.array([0.00, 0.00, 0.00]))
-    R = np.diag(np.array([0.00, 0.00, 0.00]))
-    tspan, x_traj_dr = dead_reckon(u_traj, motion_model, x0, t0, tf, h, Q, tspan=u_df['time'], tsync='var')
-    tspan, x_traj_ekf = extended_kalman(u_traj, motion_model, measurement_model, x0, t0, tf, h, Q, R, tspan=u_df['time'], tsync='var')
+    R = np.diag(np.array([0.1, 0.1, 0.1]))
+    Q = np.diag(np.array([0.005, 0.0005]))
+    tspan_dr, x_traj_dr = dead_reckon(u_traj, motion_model, x0, t0, tf, h, Q, tspan=u_df['time'], tsync='var')
+    tspan_ekf, x_traj_ekf = extended_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
+                                            x0, t0, tf, h, Q, R, tspan=u_df['time'], tsync='var')
 
     # Plotting
     trajectories = [

@@ -223,16 +223,19 @@ def q7():
     tf = u_df['time'].iloc[-1]
     h = 1/67.0  # Odometry logged at 67 Hz
     u_traj = np.array(u_df.iloc[:, 1:])
-    R = np.diag(np.array([0.1, 0.1, 0.1]))
-    Q = np.diag(np.array([0.005, 0.0005]))
+    R = np.diag(np.array([0.01, 0.01, 0.01]))
+    Q = np.diag(np.array([0.0005, 0.0005]))
     tspan_dr, x_traj_dr = dead_reckon(u_traj, motion_model, x0, t0, tf, h, Q, tspan=u_df['time'], tsync='var')
     tspan_ekf, x_traj_ekf = extended_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
                                             x0, t0, tf, h, Q, R, tspan=u_df['time'], tsync='var')
+    tspan_ukf, x_traj_ukf = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
+                                             x0, t0, tf, h, Q, R, tspan=u_df['time'], tsync='var')
 
     # Plotting
     trajectories = [
         (x_traj_dr, 'Dead-Reckoned', True, 'blue', 0.2),
         (x_traj_ekf, 'EKF', True, 'green', 0.2),
+        (x_traj_ukf, 'UKF', True, 'purple', 0.2),
         (np.array(ground_truth.iloc[:, 1:]), 'Ground Truth', True, 'orange', 0.2)
     ]
     _ = plot_wheeled_robot(trajectories, "Filtering Comparison - ds0 (Q7)", "q7.png")

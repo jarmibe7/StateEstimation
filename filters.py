@@ -163,9 +163,9 @@ def unscented_kalman(u_traj,
                      h,
                      Q,
                      R,
-                     alp=1,
+                     alp=1e-3,
                      k=0.0,
-                     beta=0.0,
+                     beta=2.0,
                      tspan=None, 
                      tsync='const'):
     """
@@ -295,11 +295,12 @@ def unscented_kalman(u_traj,
             z_diff[1] = normalize_angle(z_diff[1])
             mut = mut_bar + Kt @ (z_diff)
             sigt = sigt_bar - Kt @ sigt_zz @ Kt.T
+            # sigt = sigt_bar - Kt @ sigt_xz.T
         
         else:
             # No measurement to update, save raw prediction
             mut = mut_bar
-            sigt = sigt_bar + R
+            sigt = sigt_bar
 
         mut[2] = normalize_angle(mut[2])
         prev_u_time = t

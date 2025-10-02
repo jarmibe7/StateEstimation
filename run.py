@@ -19,7 +19,7 @@ DATA_PATH = os.path.join(__file__, "../data")
 #
 # --- Models ---
 #
-def measurement_model(xt, landmarks_truth, subj):
+def measurement_model(xt, landmarks_truth, subj, w=None):
     """
     Range-bearing measurement model
 
@@ -27,7 +27,11 @@ def measurement_model(xt, landmarks_truth, subj):
         xt: State at current timestep
         landmarks_truth: Ground truth landmark 
         subj: Landmark subject number
+        noise: Whether to incorporate noise from UKF into model
     """
+    if w is None or w.shape[0] == 0:
+        w = np.zeros((2,)) # Dummy noise vector
+
     # Get ground truth of landmark
     l = np.array(landmarks_truth.loc[landmarks_truth["subject"] == subj]).flatten()[1:]
 
@@ -35,21 +39,24 @@ def measurement_model(xt, landmarks_truth, subj):
     mu_range = np.linalg.norm(xt[0:2] - l[0:2])
     mu_bearing = np.arctan2(l[1] - xt[1], l[0] - xt[0]) - xt[2]
 
-    zt_det = np.array([mu_range, mu_bearing])   # Deterministic measurement
+    zt_bar = np.array([mu_range, mu_bearing]) + w[:2]
 
-    return zt_det, l
+    return zt_bar, l
 
-def motion_model(x, u, t, h):
+def motion_model(x, u, t, h, w=None):
     """
     A motion model that leverages RK4 integration for improved integration
 
     Args:
-        f: Dynamics function
         x: Previous state
         u: Previous control
         t: Current time
         h: Timestep
+        w: Noise vector to incorporate into model
     """
+    if w is None or w.shape[0] == 0:
+        w = np.zeros(x.shape)   # Dummy noise vector
+
     def f(x, t, u):
         """
         Nonlinear dynamics for planar wheeled robot.
@@ -59,16 +66,17 @@ def motion_model(x, u, t, h):
             t: Current timestep
             u_func: Control signal at current timestep
         """
-        u_mult = np.array([u[0], u[0], u[1]])
+        u_mult = np.array([u[0], u[0], u[1]]) + w
         xdot = np.array([np.cos(x[2]), np.sin(x[2]), 1])
-        return xdot * u_mult
+        dyn = xdot * u_mult
+        return dyn
+    
     k1 = f(x, t, u)
     k2 = f(x + h*k1/2.0, t + h/2.0, u)
     k3 = f(x + h*k2/2.0, t + h/2.0, u)
     k4 = f(x + h*k3, t + h, u)
-    x_det = x + h*(k1/6.0 + k2/3.0 + k3/3.0 + k4/6.0)   # Deterministic state
 
-    return x_det
+    return x + h*(k1/6.0 + k2/3.0 + k3/3.0 + k4/6.0)
 
 #
 # --- Simulation and Plotting ---
@@ -223,20 +231,24 @@ def q7():
     tf = u_df['time'].iloc[-1]
     h = 1/67.0  # Odometry logged at 67 Hz
     u_traj = np.array(u_df.iloc[:, 1:])
-    R = np.diag(np.array([0.1, 0.1, 0.1]))
-    Q = np.diag(np.array([0.01, 0.01]))
+    R = np.diag(np.array([0.01, 0.01, 0.01]))
+    q_val = 0.1
+    Q = np.diag(np.array([q_val, q_val]))
+        
     tspan_dr, x_traj_dr = dead_reckon(u_traj, motion_model, x0, t0, tf, h, Q, tspan=u_df['time'], tsync='var')
     tspan_ekf, x_traj_ekf = extended_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
                                             x0, t0, tf, h, Q, R, tspan=u_df['time'], tsync='var')
+    ukf_aug = True
+    if ukf_aug: Q = np.diag(np.array([q_val, q_val, q_val]))
     tspan_ukf, x_traj_ukf = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
-                                             x0, t0, tf, h, Q, R, tspan=u_df['time'], tsync='var')
+                                             x0, t0, tf, h, Q, R, aug=ukf_aug, tspan=u_df['time'], tsync='var')
 
     # Plotting
     disp_bots = False
     trajectories = [
         (x_traj_dr, 'Dead-Reckoned', disp_bots, 'blue', 0.2),
         (x_traj_ekf, 'EKF', disp_bots, 'green', 0.2),
-        (x_traj_ukf, 'UKF', disp_bots, 'purple', 0.2),
+        (x_traj_ukf, 'UKF', disp_bots, 'red', 0.2),
         (np.array(ground_truth.iloc[:, 1:]), 'Ground Truth', disp_bots, 'orange', 0.2)
     ]
     _ = plot_wheeled_robot(trajectories, "Filtering Comparison - ds0 (Q7)", "q7.png")

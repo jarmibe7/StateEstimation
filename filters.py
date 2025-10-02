@@ -166,6 +166,7 @@ def unscented_kalman(u_traj,
                      alp=1e-3,
                      k=0.0,
                      beta=2.0,
+                     aug=False,
                      tspan=None, 
                      tsync='const'):
     """
@@ -174,6 +175,9 @@ def unscented_kalman(u_traj,
     
     Followed this tutorial by James Han on YouTube:
     https://www.youtube.com/watch?v=c_6WDC66aVk
+
+    For augmented, also used this paper:
+    chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/https://skoge.folk.ntnu.no/prost/proceedings/acc05/PDFs/Papers/0724_FrB02_6.pdf
 
     Args:
         u_traj: Control trajectory
@@ -191,6 +195,7 @@ def unscented_kalman(u_traj,
         alp: Hyperparam controlling the spread of sigma points
         k: Scaling parameter
         beta: Hyperparam encoding prior knowledge of distribution
+        aug: Whether to use augmented mean and variance, and pass noise through nonlinear models
         tspan: If given a preexisting time series, can optionally use that instead
         tsync: Time synchronization, either at constant or variable timestep - 'const' | 'var'
     """
@@ -203,7 +208,9 @@ def unscented_kalman(u_traj,
     prev_control = u_traj[0]
 
     # Calculate scaling and propogation parameters
-    n = x0.shape[0]
+    n_states = x0.shape[0]
+    if aug: n = 2*n_states
+    else: n = n_states
     lam = (alp**2)*(n + k) - n
     w0_m = lam / (n + lam)
     w0_c = w0_m + (1 - alp**2 + beta)
@@ -214,7 +221,6 @@ def unscented_kalman(u_traj,
     weights_m[0] = w0_m     # First weight is special
     weights_c[0] = w0_c
 
-    # TODO: Make augmented version
     def sample_sigma(mut, sigt):
         """
         Sample sigma points from a given Gaussian
@@ -230,7 +236,7 @@ def unscented_kalman(u_traj,
         return Xt
 
     mut = x0
-    sigt = np.diag(np.array([0.01, 0.01, 0.01]))
+    sigt = 0.01*np.eye(n_states)
     z_index = 0
     for (i, t), ut in zip(enumerate(tspan), u_traj):
         if tsync == 'const':
@@ -243,46 +249,62 @@ def unscented_kalman(u_traj,
             h = t - prev_u_time 
         sim[i] = mut
 
-        # TODO: Make augmented state vector and covariance
-        # mut_aug = np.hstack([mut, np.zeros(3)])
-        # sigt_aug = np.block([
-        #     [sigt, np.zeros((3,3))],
-        #     [np.zeros((3,3)),    R]
-        # ])
+        # Make augmented state vector and covariance
+        if aug:
+            mut_aug = np.hstack([mut, np.zeros(n_states)])
+            sigt_aug = np.block([
+                [sigt, np.zeros((n_states,n_states))],
+                [np.zeros((n_states,n_states)),    R]
+            ])
+        else:
+            mut_aug = mut
+            sigt_aug = sigt
 
         # Sample sigma points
-        Xt = sample_sigma(mut, sigt)
+        Xt = sample_sigma(mut_aug, sigt_aug)
 
         # Pass sigma points through motion model
-        Yt = np.array([motion_model(xj, ut, t, h) for xj in Xt])
+        Yt = np.array([motion_model(xj[:n_states], ut, t, h, w=xj[n_states:]) for xj in Xt])
 
         # Compute Gaussian statistics from transformed points
         mut_bar = weights_m @ Yt
-        sigt_bar = np.zeros((n,n)) + R
+        sigt_bar = np.zeros((n_states,n_states))
+        if not aug: sigt_bar += R   # If not using augmented add R for noise estimation
         for j, yj in enumerate(Yt):
             sigt_bar += weights_c[j]*np.outer(yj - mut_bar, yj - mut_bar)
 
         # Check if a new measurement has been made
+        # TODO: Check all measurements at a given timestep, some have multiple measurements at a time
         if z_index < z_traj.shape[0] and t >= z_traj[z_index, 0] and subject_dict[z_traj[z_index, 1]] >= 6:  # Subjects 1-5 are other robots?
             # Get actual measurement
             subj = subject_dict[z_traj[z_index, 1]]
             zt = z_traj[z_index, 2:]
 
-            # TODO: Make augmented state vector and covariance from prediction
+            # Make augmented state vector and covariance from prediction
+            if aug:
+                mut_bar_aug = np.hstack([mut_bar, np.zeros(n_states)])
+                sigt_bar_aug = np.block([
+                    [sigt_bar, np.zeros((n_states,n_states))],
+                    [np.zeros((n_states,n_states)),        Q]
+                ])
+            else:
+                mut_bar_aug = mut_bar
+                sigt_bar_aug = sigt_bar
            
             # Redraw sigma points from prediction
-            Xt_bar = sample_sigma(mut_bar, sigt_bar)
+            Xt_bar = sample_sigma(mut_bar_aug, sigt_bar_aug)
 
             # Pass new sigma points through measurment model
             Zt = np.zeros((Xt_bar.shape[0], zt.shape[0]))
             for j, xj_bar in enumerate(Xt_bar):
-                zj_bar, l = measurement_model(xj_bar, landmarks, subj)
+                zj_bar, l = measurement_model(xj_bar[:3], landmarks, subj, w=xj_bar[3:])
                 Zt[j] = zj_bar
 
             # Compute Gaussian statistics from transformed points
             zt_bar = weights_m @ Zt
             sigt_xz = np.zeros((Yt.shape[1], Zt.shape[1]))
-            sigt_zz = np.zeros((Zt.shape[1], Zt.shape[1])) + Q
+            sigt_zz = np.zeros((Zt.shape[1], Zt.shape[1]))
+            if not aug: sigt_zz += Q    # Approximate noise if not using augmented
             for j in range(Zt.shape[0]):
                 zj = Zt[j]
                 yj = Yt[j]

@@ -125,26 +125,36 @@ def extended_kalman(u_traj,
         sigt_bar = (Gt @ sigt @ Gt.T) + R       # Variance prediction
 
         # Check if a new measurement has been made
-        if z_index < z_traj.shape[0] and t >= z_traj[z_index, 0] and subject_dict[z_traj[z_index, 1]] >= 6:  # Subjects 1-5 are other robots?
-            # Get actual measurement
-            zt_bar, l = measurement_model(mut_bar, landmarks, subject_dict[z_traj[z_index, 1]])
-            zt = z_traj[z_index, 2:]
+        updated = False
+        if z_index < z_traj.shape[0] and t >= z_traj[z_index, 0]:  
+            init_z_time = z_traj[z_index, 0]
 
-            # Compute Kalman gain
-            Ht = H(mut_bar, zt_bar, l, h)
-            Kt = (sigt_bar @ Ht.T) @ np.linalg.inv((Ht @ sigt_bar @ Ht.T) + Q)
-        
-            # Update prediction with measurement
-            z_diff = zt - zt_bar
-            z_diff[1] = normalize_angle(z_diff[1])
-            mut = mut_bar + Kt @ (z_diff)
-            sigt = (np.eye(3) - Kt @ Ht) @ sigt_bar
+            # Update based on all measurements at this timestep
+            while z_index < z_traj.shape[0] and z_traj[z_index, 0] == init_z_time:
+                if not subject_dict[z_traj[z_index, 1]] >= 6:  # Subjects 1-5 are other robots?
+                    z_index += 1
+                    continue
+                # Get actual measurement
+                zt = z_traj[z_index, 2:]
+                zt_bar, l = measurement_model(mut_bar, landmarks, subject_dict[z_traj[z_index, 1]])
 
-            z_index += 1 
-        else:
-            # No measurement to update, save raw prediction
+                # Compute Kalman gain
+                Ht = H(mut_bar, zt_bar, l, h)
+                Kt = (sigt_bar @ Ht.T) @ np.linalg.inv((Ht @ sigt_bar @ Ht.T) + Q)
+            
+                # Update prediction with measurement
+                z_diff = zt - zt_bar
+                z_diff[1] = normalize_angle(z_diff[1])
+                mut = mut_bar + Kt @ (z_diff)
+                sigt = (np.eye(3) - Kt @ Ht) @ sigt_bar
+
+                updated = True
+                z_index += 1 
+        # No measurement to update, save raw prediction
+        if not updated:
             mut = mut_bar
             sigt = sigt_bar
+            new_meas = False
 
         mut[2] = normalize_angle(mut[2])
         prev_u_time = t
@@ -274,53 +284,63 @@ def unscented_kalman(u_traj,
             sigt_bar += weights_c[j]*np.outer(yj - mut_bar, yj - mut_bar)
 
         # Check if a new measurement has been made
-        # TODO: Check all measurements at a given timestep, some have multiple measurements at a time
-        if z_index < z_traj.shape[0] and t >= z_traj[z_index, 0] and subject_dict[z_traj[z_index, 1]] >= 6:  # Subjects 1-5 are other robots?
-            # Get actual measurement
-            subj = subject_dict[z_traj[z_index, 1]]
-            zt = z_traj[z_index, 2:]
+        updated = False
+        if z_index < z_traj.shape[0] and t >= z_traj[z_index, 0]:  
+            init_z_time = z_traj[z_index, 0]
 
-            # Make augmented state vector and covariance from prediction
-            if aug:
-                mut_bar_aug = np.hstack([mut_bar, np.zeros(n_states)])
-                sigt_bar_aug = np.block([
-                    [sigt_bar, np.zeros((n_states,n_states))],
-                    [np.zeros((n_states,n_states)),        Q]
-                ])
-            else:
-                mut_bar_aug = mut_bar
-                sigt_bar_aug = sigt_bar
-           
-            # Redraw sigma points from prediction
-            Xt_bar = sample_sigma(mut_bar_aug, sigt_bar_aug)
+            # Update based on all measurements at this timestep
+            while z_index < z_traj.shape[0] and z_traj[z_index, 0] == init_z_time:
+                if not subject_dict[z_traj[z_index, 1]] >= 6:  # Subjects 1-5 are other robots?
+                    z_index += 1
+                    continue
+                # Get actual measurement
+                subj = subject_dict[z_traj[z_index, 1]]
+                zt = z_traj[z_index, 2:]
 
-            # Pass new sigma points through measurment model
-            Zt = np.zeros((Xt_bar.shape[0], zt.shape[0]))
-            for j, xj_bar in enumerate(Xt_bar):
-                zj_bar, l = measurement_model(xj_bar[:3], landmarks, subj, w=xj_bar[3:])
-                Zt[j] = zj_bar
+                # Make augmented state vector and covariance from prediction
+                if aug:
+                    mut_bar_aug = np.hstack([mut_bar, np.zeros(n_states)])
+                    sigt_bar_aug = np.block([
+                        [sigt_bar, np.zeros((n_states,n_states))],
+                        [np.zeros((n_states,n_states)),        Q]
+                    ])
+                else:
+                    mut_bar_aug = mut_bar
+                    sigt_bar_aug = sigt_bar
+            
+                # Redraw sigma points from prediction
+                Xt_bar = sample_sigma(mut_bar_aug, sigt_bar_aug)
 
-            # Compute Gaussian statistics from transformed points
-            zt_bar = weights_m @ Zt
-            sigt_xz = np.zeros((Yt.shape[1], Zt.shape[1]))
-            sigt_zz = np.zeros((Zt.shape[1], Zt.shape[1]))
-            if not aug: sigt_zz += Q    # Approximate noise if not using augmented
-            for j in range(Zt.shape[0]):
-                zj = Zt[j]
-                yj = Yt[j]
-                sigt_xz += weights_c[j]*np.outer(yj - mut_bar, zj - zt_bar)
-                sigt_zz += weights_c[j]*np.outer(zj - zt_bar, zj - zt_bar)
+                # Pass new sigma points through measurment model
+                Zt = np.zeros((Xt_bar.shape[0], zt.shape[0]))
+                for j, xj_bar in enumerate(Xt_bar):
+                    zj_bar, l = measurement_model(xj_bar[:3], landmarks, subj, w=xj_bar[3:])
+                    Zt[j] = zj_bar
 
-            # Incorporate measurement Gaussian into prediction to get posterior
-            Kt = sigt_xz @ np.linalg.inv(sigt_zz)   # Kalman gain
-            z_diff = zt - zt_bar
-            z_diff[1] = normalize_angle(z_diff[1])
-            mut = mut_bar + Kt @ (z_diff)
-            sigt = sigt_bar - Kt @ sigt_zz @ Kt.T
-            # sigt = sigt_bar - Kt @ sigt_xz.T
+                # Compute Gaussian statistics from transformed points
+                zt_bar = weights_m @ Zt
+                sigt_xz = np.zeros((Yt.shape[1], Zt.shape[1]))
+                sigt_zz = np.zeros((Zt.shape[1], Zt.shape[1]))
+                if not aug: sigt_zz += Q    # Approximate noise if not using augmented
+                for j in range(Zt.shape[0]):
+                    zj = Zt[j]
+                    yj = Yt[j]
+                    sigt_xz += weights_c[j]*np.outer(yj - mut_bar, zj - zt_bar)
+                    sigt_zz += weights_c[j]*np.outer(zj - zt_bar, zj - zt_bar)
+
+                # Incorporate measurement Gaussian into prediction to get posterior
+                Kt = sigt_xz @ np.linalg.inv(sigt_zz)   # Kalman gain
+                z_diff = zt - zt_bar
+                z_diff[1] = normalize_angle(z_diff[1])
+                mut = mut_bar + Kt @ (z_diff)
+                sigt = sigt_bar - Kt @ sigt_zz @ Kt.T
+                # sigt = sigt_bar - Kt @ sigt_xz.T
+                
+                updated = True
+                z_index += 1
         
-        else:
-            # No measurement to update, save raw prediction
+        # No measurement to update, save raw prediction
+        if not updated:
             mut = mut_bar
             sigt = sigt_bar
 

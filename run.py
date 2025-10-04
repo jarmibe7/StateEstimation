@@ -10,11 +10,64 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
+import json
 
 from filters import dead_reckon, extended_kalman, unscented_kalman
 
 PLOT_PATH = os.path.join(__file__, "../plots")
 DATA_PATH = os.path.join(__file__, "../data")
+METRICS_PATH = os.path.join(__file__, "../metrics")
+
+#
+# --- Evaluation Metrics ---
+#
+def t_match(traj, num_samples):
+    """
+    Resample a trajectory to have a certain number of samples
+    """
+    old_path_idx = np.linspace(0, 1, traj.shape[0])
+    new_path_idx = np.linspace(0, 1, num_samples)
+
+    traj_resamp = np.column_stack([
+        np.interp(new_path_idx, old_path_idx, traj[:, i]) for i in range(traj.shape[1])
+    ])
+
+    return traj_resamp
+
+
+# def mape(predicted, actual, angle=False):
+#     """
+#     Given two numpy arrays of the same length, compute Mean Average Predicted Error
+#     between them.
+#     """
+#     assert type(actual) == np.ndarray, 'Parameters must be type np.ndarray'
+#     assert type(predicted) == np.ndarray, 'Parameters must be type np.ndarray'
+#     assert actual.shape == predicted.shape, 'Arrays must be of same shape'
+#     if angle: return np.mean((np.abs(np.unwrap(actual - predicted))) / np.unwrap(actual)) * 100
+#     else: return np.mean(np.abs((actual - predicted) / actual)) * 100
+def rmse(predicted, actual, angle=False):
+    """
+    Given two 1D numpy arrays of the same length, compute Root Mean Squared Error
+    between them.
+    """
+    if angle: error = np.unwrap(actual - predicted)
+    else: error = np.linalg.norm(actual - predicted)
+    return np.sqrt(error)
+
+def compute_traj_statistics(predicted, actual):
+    """
+    Given a trajectory, compute various statistics about it from a ground truth.
+    """
+    stats = {}
+    stats['rmse_x'] = rmse(predicted[:, 0], actual[:, 0])
+    stats['rmse_y'] = rmse(predicted[:, 1], actual[:, 1])
+    stats['rmse_theta'] = rmse(predicted[:, 2], actual[:, 2])
+    stats['corr_x'] = np.corrcoef(predicted[:, 0], actual[:, 0])[0, 1]
+    stats['corr_y'] = np.corrcoef(predicted[:, 1], actual[:, 1])[0, 1]
+    stats['corr_theta'] = np.corrcoef(predicted[:, 2], actual[:, 2])[0, 1]
+
+    return stats
+
 
 #
 # --- Models ---
@@ -242,6 +295,7 @@ def q7():
     if ukf_aug: Q = np.diag(np.array([q_val, q_val, q_val]))
     tspan_ukf, x_traj_ukf = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
                                              x0, t0, tf, h, Q, R, aug=ukf_aug, tspan=u_df['time'], tsync='var')
+    x_traj_gt = np.array(ground_truth.iloc[:, 1:])
 
     # Plotting
     disp_bots = False
@@ -249,9 +303,25 @@ def q7():
         (x_traj_dr, 'Dead-Reckoned', disp_bots, 'blue', 0.2),
         (x_traj_ekf, 'EKF', disp_bots, 'green', 0.2),
         (x_traj_ukf, 'UKF', disp_bots, 'red', 0.2),
-        (np.array(ground_truth.iloc[:, 1:]), 'Ground Truth', disp_bots, 'orange', 0.2)
+        (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
     ]
     _ = plot_wheeled_robot(trajectories, "Filtering Comparison - ds0 (Q7)", "q7.png")
+
+    # Compute statistics
+    num_samples = x_traj_gt.shape[0] + (x_traj_ukf.shape[0] - x_traj_gt.shape[0])//2
+    traj_dr_resamp = t_match(x_traj_dr, num_samples)
+    traj_ekf_resamp = t_match(x_traj_ekf, num_samples)
+    traj_ukf_resamp = t_match(x_traj_ukf, num_samples)
+    traj_gt_resamp = t_match(x_traj_gt, num_samples)
+    stats_dr = compute_traj_statistics(traj_dr_resamp, traj_gt_resamp)
+    stats_ekf = compute_traj_statistics(traj_ekf_resamp, traj_gt_resamp)
+    stats_ukf = compute_traj_statistics(traj_ukf_resamp, traj_gt_resamp)
+
+    metrics_dict = {'dead_reckoned': stats_dr, 'ekf': stats_ekf, 'ukf': stats_ukf}
+    for key, value in metrics_dict.items():
+        met_path = os.path.join(METRICS_PATH, f'{key}_metrics.json')
+        with open(met_path, "w") as f:
+            json.dump(value, f, indent=4)
     print("Done\n")
         
 

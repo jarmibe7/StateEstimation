@@ -208,7 +208,7 @@ def q3():
         (x_traj, 'Dead-Reckoned', True, 'blue', 0.2),
         (np.array(ground_truth.iloc[:, 1:]), 'Ground Truth', True, 'orange', 0.2)
     ]
-    _ = plot_wheeled_robot(trajectories, "Dead-Reckoned and Ground Truth Trajectories - ds0 (Q3)", "q3.png")
+    _ = plot_wheeled_robot(trajectories, "Dead-Reckoned and Ground Truth Trajectories (Q3)", "q3.png")
     print("Done\n")
 
 def q6():
@@ -262,9 +262,43 @@ def q6():
     # plt.legend()
     fig_path = os.path.join(PLOT_PATH, 'q6.png')
     plt.savefig(fig_path)
+        
+def q8a():
+    print("Running question 8a...", end="", flush=True)
+    # Read data
+    landmarks_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Landmark_Groundtruth.dat')
+    landmarks = pd.read_csv(landmarks_data_path, sep=r"\s+", comment="#", header=None, names=["subject", "x", "y", "x_sig", "y_sig"])
+    truth_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Groundtruth.dat')
+    ground_truth = pd.read_csv(truth_data_path, sep=r"\s+", comment="#", header=None, names=["time", "x", "y", "theta"])
+    measurement_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Measurement.dat')
+    z_df = pd.read_csv(measurement_data_path, sep=r"\s+", comment="#", header=None, names=["time", "barcode", "range", "bearing"])
+    barcodes_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Barcodes.dat')
+    barcodes_df = pd.read_csv(barcodes_data_path, sep=r"\s+", comment="#", header=None, names=["subject", "barcodes"])
+    subject_dict = barcodes_df.set_index("barcodes")["subject"].to_dict()   # Map barcodes to subject number
 
-def q7():
-    print("Running question 7...", end="", flush=True)
+    # Simulation conditions and run simulation
+    x0 = np.zeros((3,))
+    t0 = 0.0
+    tf = 5.0
+    h = 0.01
+    R = np.diag(np.array([0.0001, 0.0001, 0.0001]))
+    q_val = 0.0001
+    Q = np.diag(np.array([q_val, q_val]))
+    u_traj = gen_u_traj_test(h) # Generate control trajectory
+    tspan, x_traj_dr = dead_reckon(u_traj, motion_model, x0, t0, tf, h, tsync='const')
+    tspan_ukf, x_traj_ukf = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
+                                             x0, t0, tf, h, Q, R, aug=False, tsync='const')
+
+    disp_bots = True
+    trajectories = [
+        (x_traj_dr, 'Dead-Reckoned', disp_bots, 'blue', 0.02),
+        (x_traj_ukf, 'UKF', disp_bots, 'red', 0.02),
+    ]
+    _ = plot_wheeled_robot(trajectories, "Dead-Reckoned and UKF Comparison for Artificial Control Trajectory (Q8a)", "q8a.png")
+    print("Done\n")
+
+def q8b_9():
+    print("Running question 8b...", end="", flush=True)
     # Read data
     controls_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Control.dat')
     u_df = pd.read_csv(controls_data_path, sep=r"\s+", comment="#", header=None, names=["time", "vel", "omega"])
@@ -284,53 +318,116 @@ def q7():
     tf = u_df['time'].iloc[-1]
     h = 1/67.0  # Odometry logged at 67 Hz
     u_traj = np.array(u_df.iloc[:, 1:])
-    R = np.diag(np.array([0.01, 0.01, 0.01]))
+
+    R = np.diag(np.array([0.0001, 0.0001, 0.0001]))
+    q_val = 0.0001
+    Q = np.diag(np.array([q_val, q_val]))   # Low noise
+    tspan_dr, x_traj_dr = dead_reckon(u_traj, motion_model, x0, t0, tf, h, Q, tspan=u_df['time'], tsync='var')
+    tspan_ukf_low, x_traj_ukf_low = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
+                                             x0, t0, tf, h, Q, R, aug=False, tspan=u_df['time'], tsync='var')
+    
+    R = np.diag(np.array([0.01, 0.01, 0.01]))   # Moderate noise
+    q_val = 0.01
+    Q = np.diag(np.array([q_val, q_val]))
+    x_traj_gt = np.array(ground_truth.iloc[:, 1:])
+    tspan_ukf, x_traj_ukf = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
+                                             x0, t0, tf, h, Q, R, aug=False, tspan=u_df['time'], tsync='var')
+    
+    R = np.diag(np.array([0.1, 0.1, 0.1]))   # High noise
     q_val = 0.1
     Q = np.diag(np.array([q_val, q_val]))
-        
-    tspan_dr, x_traj_dr = dead_reckon(u_traj, motion_model, x0, t0, tf, h, Q, tspan=u_df['time'], tsync='var')
-    tspan_ekf, x_traj_ekf = extended_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
-                                            x0, t0, tf, h, Q, R, tspan=u_df['time'], tsync='var')
-    ukf_aug = True
-    if ukf_aug: Q = np.diag(np.array([q_val, q_val, q_val]))
-    tspan_ukf, x_traj_ukf = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
-                                             x0, t0, tf, h, Q, R, aug=ukf_aug, tspan=u_df['time'], tsync='var')
     x_traj_gt = np.array(ground_truth.iloc[:, 1:])
+    tspan_ukf, x_traj_ukf_high = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
+                                             x0, t0, tf, h, Q, R, aug=False, tspan=u_df['time'], tsync='var')
 
     # Plotting
     disp_bots = False
-    trajectories = [
+    trajectories_8b = [     # Low noise
         (x_traj_dr, 'Dead-Reckoned', disp_bots, 'blue', 0.2),
-        (x_traj_ekf, 'EKF', disp_bots, 'green', 0.2),
+        (x_traj_ukf_low, 'UKF', disp_bots, 'red', 0.2),
+        (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
+    ]
+    _ = plot_wheeled_robot(trajectories_8b, "Dead-Reckoned vs. UKF Comparison with Low Noise (Q8b)", "q8b.png")
+    trajectories_8b = [     # Moderate Noise
+        (x_traj_dr, 'Dead-Reckoned', disp_bots, 'blue', 0.2),
         (x_traj_ukf, 'UKF', disp_bots, 'red', 0.2),
         (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
     ]
-    _ = plot_wheeled_robot(trajectories, "Filtering Comparison - ds0 (Q7)", "q7.png")
+    _ = plot_wheeled_robot(trajectories_8b, "Dead-Reckoned vs. UKF Comparison (Q8b)", "q8b.png")
+    trajectories_8b = [     # High noise
+        (x_traj_dr, 'Dead-Reckoned', disp_bots, 'blue', 0.2),
+        (x_traj_ukf_high, 'UKF', disp_bots, 'red', 0.2),
+        (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
+    ]
+    _ = plot_wheeled_robot(trajectories_8b, "Dead-Reckoned vs. UKF Comparison with High Noise (Q8b)", "q8b.png")
 
     # Compute statistics
     num_samples = x_traj_gt.shape[0] + (x_traj_ukf.shape[0] - x_traj_gt.shape[0])//2
     traj_dr_resamp = t_match(x_traj_dr, num_samples)
-    traj_ekf_resamp = t_match(x_traj_ekf, num_samples)
+    traj_ukf_low_resamp = t_match(x_traj_ukf_low, num_samples)
     traj_ukf_resamp = t_match(x_traj_ukf, num_samples)
+    traj_ukf_high_resamp = t_match(x_traj_ukf_high, num_samples)
     traj_gt_resamp = t_match(x_traj_gt, num_samples)
     stats_dr = compute_traj_statistics(traj_dr_resamp, traj_gt_resamp)
-    stats_ekf = compute_traj_statistics(traj_ekf_resamp, traj_gt_resamp)
+    stats_ukf_low = compute_traj_statistics(traj_ukf_low_resamp, traj_gt_resamp)
     stats_ukf = compute_traj_statistics(traj_ukf_resamp, traj_gt_resamp)
+    stats_ukf_high = compute_traj_statistics(traj_ukf_high_resamp, traj_gt_resamp)
 
-    metrics_dict = {'dead_reckoned': stats_dr, 'ekf': stats_ekf, 'ukf': stats_ukf}
+    metrics_dict = {'dead_reckoned': stats_dr, 'ukf_low': stats_ukf_low, 'ukf': stats_ukf, 'ukf_high': stats_ukf_high}
     for key, value in metrics_dict.items():
         met_path = os.path.join(METRICS_PATH, f'{key}_metrics.json')
         with open(met_path, "w") as f:
             json.dump(value, f, indent=4)
     print("Done\n")
+
+def aug():
+    # Read data
+    controls_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Control.dat')
+    u_df = pd.read_csv(controls_data_path, sep=r"\s+", comment="#", header=None, names=["time", "vel", "omega"])
+    landmarks_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Landmark_Groundtruth.dat')
+    landmarks = pd.read_csv(landmarks_data_path, sep=r"\s+", comment="#", header=None, names=["subject", "x", "y", "x_sig", "y_sig"])
+    truth_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Groundtruth.dat')
+    ground_truth = pd.read_csv(truth_data_path, sep=r"\s+", comment="#", header=None, names=["time", "x", "y", "theta"])
+    measurement_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Measurement.dat')
+    z_df = pd.read_csv(measurement_data_path, sep=r"\s+", comment="#", header=None, names=["time", "barcode", "range", "bearing"])
+    barcodes_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Barcodes.dat')
+    barcodes_df = pd.read_csv(barcodes_data_path, sep=r"\s+", comment="#", header=None, names=["subject", "barcodes"])
+    subject_dict = barcodes_df.set_index("barcodes")["subject"].to_dict()   # Map barcodes to subject number
+
+    # Simulation conditions and run simulation
+    x0 = np.array(ground_truth.iloc[0][1:])
+    t0 = u_df['time'].iloc[0]
+    tf = u_df['time'].iloc[-1]
+    h = 1/67.0  # Odometry logged at 67 Hz
+    u_traj = np.array(u_df.iloc[:, 1:])
+    R = np.diag(np.array([0.01, 0.01, 0.01]))
+    q_val = 0.1
+    Q = np.diag(np.array([q_val, q_val]))
         
+    tspan_ukf, x_traj_ukf = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
+                                             x0, t0, tf, h, Q, R, aug=False, tspan=u_df['time'], tsync='var')
+    ukf_aug = True
+    Q = np.diag(np.array([q_val, q_val, q_val]))
+    tspan_ukf_aug, x_traj_ukf_aug = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
+                                             x0, t0, tf, h, Q, R, aug=True, tspan=u_df['time'], tsync='var')
+    x_traj_gt = np.array(ground_truth.iloc[:, 1:])
+
+    disp_bots = False
+    trajectories_aug = trajectories_8b = [
+        (x_traj_ukf_aug, 'Augmented UKF', disp_bots, 'purple', 0.2),
+        (x_traj_ukf, 'UKF', disp_bots, 'red', 0.2),
+        (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
+    ]
+    _ = plot_wheeled_robot(trajectories_aug, "Regular vs. Augmented UKF Comparsion", "aug.png")
+    
 
 def main():
     print("*** STARTING ***\n")
     # q2()
     # q3()
     # q6()
-    q7()
+    # q8a()
+    q8b_9()
     
     print("\n*** DONE ***")
     return

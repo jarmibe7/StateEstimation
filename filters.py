@@ -395,7 +395,7 @@ def particle(u_traj,
     prev_control = u_traj[0]
     Xtbar = np.zeros((M,3))                         # Holds particles before resampling
     W = np.zeros(M)                                 # Holds particle weights
-    Xt = np.zeros((len(tspan), M, 3))               # Holds resampled particles
+    Xt = x0 + np.random.multivariate_normal(np.zeros(len(x0)), R, size=M)               # Holds resampled particles
     rng = np.random.default_rng()                   # Random number generator for resampling
 
     # Guassian probability density function
@@ -419,56 +419,58 @@ def particle(u_traj,
             h = t - prev_u_time  
         sim[i] = mut
 
-        # Sample particles
+        # Check for new measurements
         resample = False
+        Zt = []
+        if z_index < z_traj.shape[0] and t >= z_traj[z_index, 0]:  
+            init_z_time = z_traj[z_index, 0]
+
+            # Store all measurements at this timestep
+            while z_index < z_traj.shape[0] and z_traj[z_index, 0] == init_z_time:
+                if not subject_dict[z_traj[z_index, 1]] >= 6:  # Subjects 1-5 are other robots?
+                    z_index += 1
+                    continue
+                # Get actual measurement
+                zt = z_traj[z_index, 2:]
+                Zt.append((zt, subject_dict[z_traj[z_index, 1]]))
+
+                resample = True     # Should perform weight update + resampling
+                z_index += 1
+
+        # Sample particles
         for m in range(M):
             # Update belief for this timestep
-            xt = Xt[i][m]
+            xt = Xt[m]
 
             # Use motion model to make sample predictions
-            xm = motion_model(xt, ut, t, h)
+            xm = motion_model(xt, ut, t, h, w=np.random.multivariate_normal(mean=np.zeros(xt.shape), cov=R))
 
-            # Check for new measurements
-            updated = False
-            if z_index < z_traj.shape[0] and t >= z_traj[z_index, 0]:  
-                init_z_time = z_traj[z_index, 0]
-
-                # Update based on all measurements at this timestep
+            if resample:
                 log_wm = 0.0
-                while z_index < z_traj.shape[0] and z_traj[z_index, 0] == init_z_time:
-                    if not subject_dict[z_traj[z_index, 1]] >= 6:  # Subjects 1-5 are other robots?
-                        z_index += 1
-                        continue
-                    # Get actual measurement
-                    zt = z_traj[z_index, 2:]
-
+                for zt, subj in Zt:
                     # Simulate sensor reading with particle x_m
-                    zm, l = measurement_model(xm, landmarks, subject_dict[z_traj[z_index, 1]])
+                    zm, l = measurement_model(xm, landmarks, subj)
 
                     # Compute weight as log likelihood of true sensor reading given simulated sensor reading
                     # and combine with weight for other potential readings
-                    log_wm += np.log(pdf(zt, zm, Q))
-                    updated = True      # Need to update weights
-                    resample = True
+                    log_wm += np.log(max(pdf(zt, zm, Q), 1e-12))    # Don't take log of 0
 
-                # Store samples and weights
-                if updated: 
-                    W[m] = np.exp(log_wm)   # Convert back to regular likelihood
-                    Xtbar[m] = xm
-                else: 
-                    resample = False
-                    break     # Found a measurement, but it was another robot
+                W[m] = np.exp(log_wm)   # Convert back to regular likelihood
+
+            Xtbar[m] = xm   # Store particles
 
         # Perform resampling to eliminate particles with low weights
         if resample:
+            W = W / np.sum(W)   # Normalize weights
             Xt_resamp = np.zeros(Xtbar.shape)
             for m in range(M):
                 Xt_resamp[m] = rng.choice(Xtbar, replace=True, p=W)   # Probabiliy of picking xm is wm
 
-            Xt[i+1] = Xt_resamp
+            Xt = Xt_resamp
         else:
-            Xt[i+1] = Xtbar   # If no sampling, save all particles
+            Xt = Xtbar   # If no sampling, save all particles
 
+        mut = np.mean(Xt, axis=0)
         mut[2] = normalize_angle(mut[2])
         prev_u_time = t
         prev_control = ut

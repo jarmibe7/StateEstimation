@@ -76,8 +76,8 @@ def extended_kalman(u_traj,
         t0: Simulation start time
         tf: Simulation end time
         h: Timestep
-        R: Variance of Gaussian noise in motion model
         Q: Variance of Gaussian noise in measurement model
+        R: Variance of Gaussian noise in motion model
         tspan: If given a preexisting time series, can optionally use that instead
         tsync: Time synchronization, either at constant or variable timestep - 'const' | 'var'
         
@@ -200,8 +200,8 @@ def unscented_kalman(u_traj,
         t0: Simulation start time
         tf: Simulation end time
         h: Timestep
-        R: Variance of Gaussian noise in motion model
         Q: Variance of Gaussian noise in measurement model
+        R: Variance of Gaussian noise in motion model
         alp: Hyperparam controlling the spread of sigma points
         k: Scaling parameter
         beta: Hyperparam encoding prior knowledge of distribution
@@ -343,6 +343,131 @@ def unscented_kalman(u_traj,
         if not updated:
             mut = mut_bar
             sigt = sigt_bar
+
+        mut[2] = normalize_angle(mut[2])
+        prev_u_time = t
+        prev_control = ut
+    return tspan, sim
+
+def particle(u_traj,
+             z_traj,
+             landmarks,
+             subject_dict,
+             motion_model,
+             measurement_model,
+             x0,
+             t0,
+             tf,
+             h,
+             Q,
+             R,
+             M=1000,
+             tspan=None, 
+             tsync='const'):
+    """
+    Function that executes a control trajectory given motion and measurement models,
+    using the EKF for state estimation.
+
+    Args:
+        u_traj: Control trajectory
+        z_traj: DataFrame containing measurements and corresponding timesteps
+        landmarks: DataFrame of ground truth landmark data 
+        subject_dict: Dictionary mapping measurement barcodes to subject numbers
+        motion_model: Motion model function of a robot
+        measurement_model: Measurement model function of a robot
+        x0: Initial robot state
+        t0: Simulation start time
+        tf: Simulation end time
+        h: Timestep
+        Q: Variance of Gaussian noise in measurement model
+        R: Variance of Gaussian noise in motion model
+        M: Number of particles to use
+        tspan: If given a preexisting time series, can optionally use that instead
+        tsync: Time synchronization, either at constant or variable timestep - 'const' | 'var'
+        
+    """
+    # Initialization
+    z_traj = z_traj.to_numpy()
+    if tspan is None: tspan = np.arange(start=t0, stop=tf, step=h)
+    assert tspan.shape[0] == u_traj.shape[0]
+    sim = np.zeros((len(tspan), len(x0)))
+    prev_u_time = tspan[0] - h
+    prev_control = u_traj[0]
+    Xtbar = np.zeros((M,3))                         # Holds particles before resampling
+    W = np.zeros(M)                                 # Holds particle weights
+    Xt = np.zeros((len(tspan), M, 3))               # Holds resampled particles
+    rng = np.random.default_rng()                   # Random number generator for resampling
+
+    # Guassian probability density function
+    def pdf(zt, zm, cov):
+        d = len(zt)
+
+        norm = 1.0 / ((2*np.pi)**(d/2) * np.linalg.det(cov)**0.5)
+        body = np.exp(-0.5 * (zt - zm).T @ np.linalg.inv(cov) @ (zt - zm))
+        return norm * body
+
+    mut = x0
+    z_index = 0
+    for (i, t), ut in zip(enumerate(tspan), u_traj):
+        if tsync == 'const':
+            # Control signals are not logged at a fixed timestep.
+            # We can simulate at a fixed timestep, but send commands at proper times. In this implementation
+            # the previous command is held onto, and used if it is still commanded at the current t.
+            if (not i == 0) and (prev_u_time + h < t):
+                ut = prev_control
+        else:
+            h = t - prev_u_time  
+        sim[i] = mut
+
+        # Sample particles
+        resample = False
+        for m in range(M):
+            # Update belief for this timestep
+            xt = Xt[i][m]
+
+            # Use motion model to make sample predictions
+            xm = motion_model(xt, ut, t, h)
+
+            # Check for new measurements
+            updated = False
+            if z_index < z_traj.shape[0] and t >= z_traj[z_index, 0]:  
+                init_z_time = z_traj[z_index, 0]
+
+                # Update based on all measurements at this timestep
+                log_wm = 0.0
+                while z_index < z_traj.shape[0] and z_traj[z_index, 0] == init_z_time:
+                    if not subject_dict[z_traj[z_index, 1]] >= 6:  # Subjects 1-5 are other robots?
+                        z_index += 1
+                        continue
+                    # Get actual measurement
+                    zt = z_traj[z_index, 2:]
+
+                    # Simulate sensor reading with particle x_m
+                    zm, l = measurement_model(xm, landmarks, subject_dict[z_traj[z_index, 1]])
+
+                    # Compute weight as log likelihood of true sensor reading given simulated sensor reading
+                    # and combine with weight for other potential readings
+                    log_wm += np.log(pdf(zt, zm, Q))
+                    updated = True      # Need to update weights
+                    resample = True
+
+                # Store samples and weights
+                if updated: 
+                    W[m] = np.exp(log_wm)   # Convert back to regular likelihood
+                    Xtbar[m] = xm
+                else: 
+                    resample = False
+                    break     # Found a measurement, but it was another robot
+
+        # Perform resampling to eliminate particles with low weights
+        if resample:
+            Xt_resamp = np.zeros(Xtbar.shape)
+            for m in range(M):
+                Xt_resamp[m] = rng.choice(Xtbar, replace=True, p=W)   # Probabiliy of picking xm is wm
+
+            Xt[i+1] = Xt_resamp
+        else:
+            Xt[i+1] = Xtbar   # If no sampling, save all particles
 
         mut[2] = normalize_angle(mut[2])
         prev_u_time = t

@@ -145,12 +145,14 @@ def gen_u_traj_test(h):
 
     return np.vstack([straight, right_turn, straight, left_turn, straight])
 
-def plot_wheeled_robot(trajectories, title, filename):
+def plot_wheeled_robot(trajectories, title, filename, plot_dr=True):
     """
     Plot the trajectory followed by a wheeled robot in the X-Y Plane
     """
     # Plot path
-    fig, ax = plt.subplots(1, 1, figsize=(8,4), tight_layout=True)
+    if plot_dr: length = 8
+    else: length = 5
+    fig, ax = plt.subplots(1, 1, figsize=(length,4), tight_layout=True)
     for traj, label, display_robot, color, offset in trajectories:    # Plot multiple trajectories
         ax.plot(traj[:, 0], traj[:, 1], label=label, color=color)
 
@@ -164,8 +166,8 @@ def plot_wheeled_robot(trajectories, title, filename):
                     ax.plot(th_x, th_y, linestyle='', marker='*', markersize=5, color=color)
         
     plt.title(title)
-    plt.xlabel("x-position")
-    plt.ylabel("y-position")
+    plt.xlabel("x-position [m]")
+    plt.ylabel("y-position [m]")
     plt.legend()
     fig_path = os.path.join(PLOT_PATH, filename)
     plt.savefig(fig_path)
@@ -257,8 +259,8 @@ def q6():
     # Move legend outside plot
     ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     plt.title('Comparison of Measured and Ground Truth Landmark Positions')
-    plt.xlabel("x-position")
-    plt.ylabel("y-position")
+    plt.xlabel("x-position [m]")
+    plt.ylabel("y-position [m]")
     # plt.legend()
     fig_path = os.path.join(PLOT_PATH, 'q6.png')
     plt.savefig(fig_path)
@@ -281,24 +283,36 @@ def q8a():
     t0 = 0.0
     tf = 5.0
     h = 0.01
-    R = np.diag(np.array([0.0001, 0.0001, 0.0001]))
-    q_val = 0.0001
-    Q = np.diag(np.array([q_val, q_val]))
     u_traj = gen_u_traj_test(h) # Generate control trajectory
     tspan, x_traj_dr = dead_reckon(u_traj, motion_model, x0, t0, tf, h, tsync='const')
-    tspan_ukf, x_traj_ukf = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
+    R = np.diag(np.array([0.0001, 0.0001, 0.0001])) # Low noise
+    q_val = 0.0001
+    Q = np.diag(np.array([q_val, q_val]))
+    tspan_ukf, x_traj_ukf_low = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
+                                             x0, t0, tf, h, Q, R, aug=False, tsync='const')
+    R = np.diag(np.array([0.001, 0.001, 0.001])) # Medium noise
+    q_val = 0.001
+    Q = np.diag(np.array([q_val, q_val]))
+    tspan_ukf, x_traj_ukf_med = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
+                                             x0, t0, tf, h, Q, R, aug=False, tsync='const')
+    R = np.diag(np.array([0.01, 0.01, 0.01])) # Higher noise
+    q_val = 0.01
+    Q = np.diag(np.array([q_val, q_val]))
+    tspan_ukf, x_traj_ukf_high = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
                                              x0, t0, tf, h, Q, R, aug=False, tsync='const')
 
     disp_bots = True
     trajectories = [
         (x_traj_dr, 'Dead-Reckoned', disp_bots, 'blue', 0.02),
-        (x_traj_ukf, 'UKF', disp_bots, 'red', 0.02),
+        (x_traj_ukf_low, 'UKF (Low Noise)', disp_bots, 'red', 0.02),
+        (x_traj_ukf_med, 'UKF (Med. Noise)', disp_bots, 'green', 0.02),
+        (x_traj_ukf_high, 'UKF (High Noise)', disp_bots, 'purple', 0.02),
     ]
     _ = plot_wheeled_robot(trajectories, "Dead-Reckoned and UKF Comparison for Artificial Control Trajectory (Q8a)", "q8a.png")
     print("Done\n")
 
 def q8b_9():
-    print("Running question 8b...", end="", flush=True)
+    print("Running question 8b and 9...", end="", flush=True)
     # Read data
     controls_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Control.dat')
     u_df = pd.read_csv(controls_data_path, sep=r"\s+", comment="#", header=None, names=["time", "vel", "omega"])
@@ -318,6 +332,13 @@ def q8b_9():
     tf = u_df['time'].iloc[-1]
     h = 1/67.0  # Odometry logged at 67 Hz
     u_traj = np.array(u_df.iloc[:, 1:])
+
+    R = np.diag(np.array([0.000001, 0.000001, 0.000001]))
+    q_val = 0.000001
+    Q = np.diag(np.array([q_val, q_val]))   # No noise
+    tspan_dr, x_traj_dr = dead_reckon(u_traj, motion_model, x0, t0, tf, h, Q, tspan=u_df['time'], tsync='var')
+    tspan_ukf_none, x_traj_ukf_none = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
+                                             x0, t0, tf, h, Q, R, aug=False, tspan=u_df['time'], tsync='var')
 
     R = np.diag(np.array([0.0001, 0.0001, 0.0001]))
     q_val = 0.0001
@@ -342,12 +363,18 @@ def q8b_9():
 
     # Plotting
     disp_bots = False
+    trajectories_8b = [     # No noise
+        (x_traj_dr, 'Dead-Reckoned', disp_bots, 'blue', 0.2),
+        (x_traj_ukf_none, 'UKF', disp_bots, 'red', 0.2),
+        (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
+    ]
+    _ = plot_wheeled_robot(trajectories_8b, "Dead-Reckoned vs. UKF Comparison with No Noise (Q9)", "q9_none.png")
     trajectories_8b = [     # Low noise
         (x_traj_dr, 'Dead-Reckoned', disp_bots, 'blue', 0.2),
         (x_traj_ukf_low, 'UKF', disp_bots, 'red', 0.2),
         (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
     ]
-    _ = plot_wheeled_robot(trajectories_8b, "Dead-Reckoned vs. UKF Comparison with Low Noise (Q8b)", "q8b.png")
+    _ = plot_wheeled_robot(trajectories_8b, "Dead-Reckoned vs. UKF Comparison with Low Noise (Q9)", "q9_low.png")
     trajectories_8b = [     # Moderate Noise
         (x_traj_dr, 'Dead-Reckoned', disp_bots, 'blue', 0.2),
         (x_traj_ukf, 'UKF', disp_bots, 'red', 0.2),
@@ -359,21 +386,24 @@ def q8b_9():
         (x_traj_ukf_high, 'UKF', disp_bots, 'red', 0.2),
         (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
     ]
-    _ = plot_wheeled_robot(trajectories_8b, "Dead-Reckoned vs. UKF Comparison with High Noise (Q8b)", "q8b.png")
+    _ = plot_wheeled_robot(trajectories_8b, "Dead-Reckoned vs. UKF Comparison with High Noise (Q9)", "q9_high.png")
 
     # Compute statistics
     num_samples = x_traj_gt.shape[0] + (x_traj_ukf.shape[0] - x_traj_gt.shape[0])//2
     traj_dr_resamp = t_match(x_traj_dr, num_samples)
+    traj_ukf_none_resamp = t_match(x_traj_ukf_none, num_samples)
     traj_ukf_low_resamp = t_match(x_traj_ukf_low, num_samples)
     traj_ukf_resamp = t_match(x_traj_ukf, num_samples)
     traj_ukf_high_resamp = t_match(x_traj_ukf_high, num_samples)
     traj_gt_resamp = t_match(x_traj_gt, num_samples)
     stats_dr = compute_traj_statistics(traj_dr_resamp, traj_gt_resamp)
+    stats_ukf_none = compute_traj_statistics(traj_ukf_none_resamp, traj_gt_resamp)
     stats_ukf_low = compute_traj_statistics(traj_ukf_low_resamp, traj_gt_resamp)
     stats_ukf = compute_traj_statistics(traj_ukf_resamp, traj_gt_resamp)
     stats_ukf_high = compute_traj_statistics(traj_ukf_high_resamp, traj_gt_resamp)
 
-    metrics_dict = {'dead_reckoned': stats_dr, 'ukf_low': stats_ukf_low, 'ukf': stats_ukf, 'ukf_high': stats_ukf_high}
+    metrics_dict = {'dead_reckoned': stats_dr, 'ukf_none': stats_ukf_none, 
+                    'ukf_low': stats_ukf_low, 'ukf': stats_ukf, 'ukf_high': stats_ukf_high}
     for key, value in metrics_dict.items():
         met_path = os.path.join(METRICS_PATH, f'{key}_metrics.json')
         with open(met_path, "w") as f:
@@ -381,6 +411,7 @@ def q8b_9():
     print("Done\n")
 
 def aug():
+    print("Running augmented comparison...", end="", flush=True)
     # Read data
     controls_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Control.dat')
     u_df = pd.read_csv(controls_data_path, sep=r"\s+", comment="#", header=None, names=["time", "vel", "omega"])
@@ -404,22 +435,176 @@ def aug():
     q_val = 0.1
     Q = np.diag(np.array([q_val, q_val]))
         
-    tspan_ukf, x_traj_ukf = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
+    tspan_ukf, x_traj_ukf = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model,    # Regular UKF
                                              x0, t0, tf, h, Q, R, aug=False, tspan=u_df['time'], tsync='var')
-    ukf_aug = True
-    Q = np.diag(np.array([q_val, q_val, q_val]))
-    tspan_ukf_aug, x_traj_ukf_aug = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
-                                             x0, t0, tf, h, Q, R, aug=True, tspan=u_df['time'], tsync='var')
-    x_traj_gt = np.array(ground_truth.iloc[:, 1:])
+    
 
+    R = np.diag(np.array([0.000001, 0.000001, 0.000001]))
+    q_val = 0.000001
+    Q = np.diag(np.array([q_val, q_val, q_val]))   # No noise aug
+    tspan_dr, x_traj_dr = dead_reckon(u_traj, motion_model, x0, t0, tf, h, Q, tspan=u_df['time'], tsync='var')
+    tspan_ukf_none, x_traj_ukf_aug_none = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
+                                             x0, t0, tf, h, Q, R, aug=True, tspan=u_df['time'], tsync='var')
+
+    R = np.diag(np.array([0.0001, 0.0001, 0.0001]))
+    q_val = 0.0001
+    Q = np.diag(np.array([q_val, q_val, q_val]))   # Low noise aug
+    tspan_dr, x_traj_dr = dead_reckon(u_traj, motion_model, x0, t0, tf, h, Q, tspan=u_df['time'], tsync='var')
+    tspan_ukf_low, x_traj_ukf_aug_low = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
+                                             x0, t0, tf, h, Q, R, aug=True, tspan=u_df['time'], tsync='var')
+    
+    R = np.diag(np.array([0.01, 0.01, 0.01]))   # Moderate noise aug
+    q_val = 0.01
+    Q = np.diag(np.array([q_val, q_val, q_val]))
+    tspan_ukf, x_traj_ukf_aug = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
+                                             x0, t0, tf, h, Q, R, aug=True, tspan=u_df['time'], tsync='var')
+    
+    R = np.diag(np.array([0.1, 0.1, 0.1]))   # High noise aug
+    q_val = 0.1
+    Q = np.diag(np.array([q_val, q_val, q_val]))
+    x_traj_gt = np.array(ground_truth.iloc[:, 1:])
+    tspan_ukf, x_traj_ukf_aug_high = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model, 
+                                             x0, t0, tf, h, Q, R, aug=True, tspan=u_df['time'], tsync='var')
+
+    # Plotting
     disp_bots = False
-    trajectories_aug = trajectories_8b = [
-        (x_traj_ukf_aug, 'Augmented UKF', disp_bots, 'purple', 0.2),
+    trajectories_comp = [     # No noise
         (x_traj_ukf, 'UKF', disp_bots, 'red', 0.2),
+        (x_traj_ukf_aug_none, 'Augmented UKF', disp_bots, 'purple', 0.2),
         (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
     ]
-    _ = plot_wheeled_robot(trajectories_aug, "Regular vs. Augmented UKF Comparsion", "aug.png")
+    _ = plot_wheeled_robot(trajectories_comp, "Regular UKF vs. Augmented UKF Comparison with No Noise", "aug_reg.png", plot_dr=False)
+    trajectories_no = [     # No noise
+        (x_traj_dr, 'Dead-Reckoned', disp_bots, 'blue', 0.2),
+        (x_traj_ukf_aug_none, 'Augmented UKF', disp_bots, 'purple', 0.2),
+        (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
+    ]
+    _ = plot_wheeled_robot(trajectories_no, "Dead-Reckoned vs. Augmented UKF Comparison with No Noise", "aug_none.png")
+    trajectories_low = [     # Low noise
+        (x_traj_dr, 'Dead-Reckoned', disp_bots, 'blue', 0.2),
+        (x_traj_ukf_aug_low, 'Augmented UKF', disp_bots, 'purple', 0.2),
+        (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
+    ]
+    _ = plot_wheeled_robot(trajectories_low, "Dead-Reckoned vs. Augmented UKF Comparison with Low Noise", "aug_low.png")
+    trajectories = [     # Moderate Noise
+        (x_traj_dr, 'Dead-Reckoned', disp_bots, 'blue', 0.2),
+        (x_traj_ukf_aug, 'Augmented UKF', disp_bots, 'purple', 0.2),
+        (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
+    ]
+    _ = plot_wheeled_robot(trajectories, "Dead-Reckoned vs. Augmented UKF Comparison", "aug.png")
+    trajectories_high = [     # High noise
+        (x_traj_dr, 'Dead-Reckoned', disp_bots, 'blue', 0.2),
+        (x_traj_ukf_aug_high, 'Augmented UKF', disp_bots, 'purple', 0.2),
+        (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
+    ]
+    _ = plot_wheeled_robot(trajectories_high, "Dead-Reckoned vs. Augmented UKF Comparison with High Noise", "aug_high.png")
+
+    # Compute statistics
+    num_samples = x_traj_gt.shape[0] + (x_traj_ukf.shape[0] - x_traj_gt.shape[0])//2
+    traj_dr_resamp = t_match(x_traj_dr, num_samples)
+    traj_ukf_aug_none_resamp = t_match(x_traj_ukf_aug_none, num_samples)
+    traj_ukf_aug_low_resamp = t_match(x_traj_ukf_aug_low, num_samples)
+    traj_ukf_aug_resamp = t_match(x_traj_ukf_aug, num_samples)
+    traj_ukf_aug_high_resamp = t_match(x_traj_ukf_aug_high, num_samples)
+    traj_gt_resamp = t_match(x_traj_gt, num_samples)
+    stats_dr = compute_traj_statistics(traj_dr_resamp, traj_gt_resamp)
+    stats_ukf_aug_none = compute_traj_statistics(traj_ukf_aug_none_resamp, traj_gt_resamp)
+    stats_ukf_aug_low = compute_traj_statistics(traj_ukf_aug_low_resamp, traj_gt_resamp)
+    stats_ukf_aug = compute_traj_statistics(traj_ukf_aug_resamp, traj_gt_resamp)
+    stats_ukf_aug_high = compute_traj_statistics(traj_ukf_aug_high_resamp, traj_gt_resamp)
+
+    metrics_dict = {'dead_reckoned': stats_dr, 'ukf_aug_none': stats_ukf_aug_none, 
+                    'ukf_aug_low': stats_ukf_aug_low, 'ukf_aug': stats_ukf_aug, 'ukf_aug_high': stats_ukf_aug_high}
+    for key, value in metrics_dict.items():
+        met_path = os.path.join(METRICS_PATH, f'{key}_metrics.json')
+        with open(met_path, "w") as f:
+            json.dump(value, f, indent=4)
+    print("Done\n")
+
+def study_comp():
+    print("Running augmented comparison...", end="", flush=True)
+    # Read data
+    controls_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Control.dat')
+    u_df = pd.read_csv(controls_data_path, sep=r"\s+", comment="#", header=None, names=["time", "vel", "omega"])
+    landmarks_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Landmark_Groundtruth.dat')
+    landmarks = pd.read_csv(landmarks_data_path, sep=r"\s+", comment="#", header=None, names=["subject", "x", "y", "x_sig", "y_sig"])
+    truth_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Groundtruth.dat')
+    ground_truth = pd.read_csv(truth_data_path, sep=r"\s+", comment="#", header=None, names=["time", "x", "y", "theta"])
+    measurement_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Measurement.dat')
+    z_df = pd.read_csv(measurement_data_path, sep=r"\s+", comment="#", header=None, names=["time", "barcode", "range", "bearing"])
+    barcodes_data_path = os.path.join(DATA_PATH, 'ds0', 'ds0_Barcodes.dat')
+    barcodes_df = pd.read_csv(barcodes_data_path, sep=r"\s+", comment="#", header=None, names=["subject", "barcodes"])
+    subject_dict = barcodes_df.set_index("barcodes")["subject"].to_dict()   # Map barcodes to subject number
+
+    # Simulation conditions and run simulation
+    x0 = np.array(ground_truth.iloc[0][1:])
+    t0 = u_df['time'].iloc[0]
+    tf = u_df['time'].iloc[-1]
+    h = 1/67.0  # Odometry logged at 67 Hz
+    u_traj = np.array(u_df.iloc[:, 1:])
+    p = 1.0
+    R = np.diag(np.array([p, p, p]))
+    Q = np.diag(np.array([p, p]))
+        
+    tspan_ukf, x_traj_ukf_slow = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model,    # Regular UKF p=1.0
+                                             x0, t0, tf, h, Q, R, aug=False, tspan=u_df['time'], tsync='var')
     
+    p = 10.0
+    R = np.diag(np.array([p, p, p]))
+    Q = np.diag(np.array([p, p]))
+        
+    tspan_ukf, x_traj_ukf_shigh = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model,    # Regular UKF p=10.0
+                                             x0, t0, tf, h, Q, R, aug=False, tspan=u_df['time'], tsync='var')
+    
+
+    R = np.diag(np.array([p, p, p]))
+    Q = np.diag(np.array([p, p, p]))
+        
+    tspan_ukf, x_traj_ukf_aug_slow = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model,    # Augmented UKF p=1.0
+                                             x0, t0, tf, h, Q, R, aug=True, tspan=u_df['time'], tsync='var')
+    
+    p = 10.0
+    R = np.diag(np.array([p, p, p]))
+    Q = np.diag(np.array([p, p, p]))
+        
+    tspan_ukf, x_traj_ukf_aug_shigh = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model,    # Augmented UKF p=10.0
+                                             x0, t0, tf, h, Q, R, aug=True, tspan=u_df['time'], tsync='var')
+    
+    x_traj_gt = np.array(ground_truth.iloc[:, 1:])
+
+    # Plotting
+    disp_bots = False
+    trajectories_slow = [     # No noise
+        (x_traj_ukf_slow, 'UKF', disp_bots, 'red', 0.2),
+        (x_traj_ukf_aug_slow, 'Augmented UKF', disp_bots, 'purple', 0.2),
+        (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
+    ]
+    _ = plot_wheeled_robot(trajectories_slow, "Regular UKF vs. Augmented UKF Comparison with p=1.0", "slow.png", plot_dr=False)
+    trajectories_shigh = [     # No noise
+        (x_traj_ukf_shigh, 'Dead-Reckoned', disp_bots, 'blue', 0.2),
+        (x_traj_ukf_aug_shigh, 'Augmented UKF', disp_bots, 'purple', 0.2),
+        (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
+    ]
+    _ = plot_wheeled_robot(trajectories_shigh, "Regular UKF vs. Augmented UKF Comparison with p=10.0", "shigh.png", plot_dr=False)
+
+    # Compute statistics
+    num_samples = x_traj_gt.shape[0] + (x_traj_ukf_slow.shape[0] - x_traj_gt.shape[0])//2
+    traj_ukf_slow_resamp = t_match(x_traj_ukf_slow, num_samples)
+    traj_ukf_aug_slow_resamp = t_match(x_traj_ukf_aug_slow, num_samples)
+    traj_ukf_shigh_resamp = t_match(x_traj_ukf_shigh, num_samples)
+    traj_ukf_aug_shigh_resamp = t_match(x_traj_ukf_aug_shigh, num_samples)
+    traj_gt_resamp = t_match(x_traj_gt, num_samples)
+    stats_ukf_slow = compute_traj_statistics(traj_ukf_slow_resamp, traj_gt_resamp)
+    stats_ukf_aug_slow = compute_traj_statistics(traj_ukf_aug_slow_resamp, traj_gt_resamp)
+    stats_ukf_shigh = compute_traj_statistics(traj_ukf_shigh_resamp, traj_gt_resamp)
+    stats_ukf_aug_shigh = compute_traj_statistics(traj_ukf_aug_shigh_resamp, traj_gt_resamp)
+
+    metrics_dict = {'ukf_slow': stats_ukf_slow, 'ukf_aug_slow': stats_ukf_aug_slow, 'ukf_aug': stats_ukf_shigh, 'ukf_aug_high': stats_ukf_aug_shigh}
+    for key, value in metrics_dict.items():
+        met_path = os.path.join(METRICS_PATH, f'{key}_metrics.json')
+        with open(met_path, "w") as f:
+            json.dump(value, f, indent=4)
+    print("Done\n")
 
 def main():
     print("*** STARTING ***\n")
@@ -427,7 +612,9 @@ def main():
     # q3()
     # q6()
     # q8a()
-    q8b_9()
+    # q8b_9()
+    # aug()
+    study_comp()
     
     print("\n*** DONE ***")
     return

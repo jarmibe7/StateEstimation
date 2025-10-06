@@ -35,7 +35,7 @@ to optimize this code, but if you want to run them you can go to main() and unco
 
 #### Code Structure
 
-- run.py: (From top to bottom) First are functions used to evaluate filter performance and compare trajectories. Next are the motion and measurement model. Next are separate functions for each question associated with a plot or data. Finally, the main function.
+- run.py: (From top to bottom) First are functions used to evaluate filter performance and compare trajectories. Next are the motion and measurement model. Next are helper functions for plotting and test trajectory generation. Next are separate functions for each question associated with a plot or data. Finally, the main function.
 
 - filters.py: Contains all filters implemented.
 
@@ -43,4 +43,4 @@ to optimize this code, but if you want to run them you can go to main() and unco
 
 - metrics/ : Contains JSON files with trajectory evaluation results, when compared to ground truth trajectory.
 
-- plots / : Contains all figures used in report. 
+- plots/ : Contains all figures used in report. 

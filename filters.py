@@ -358,7 +358,7 @@ def particle(u_traj,
              h,
              Q,
              R,
-             M=1000,
+             M=50,
              tspan=None, 
              tsync='const'):
     """

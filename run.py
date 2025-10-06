@@ -638,7 +638,7 @@ def all_filters():
                                              x0, t0, tf, h, Q, R, aug=False, tspan=u_df['time'], tsync='var')
     
     tspan_part, x_traj_part = particle(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model,    # Particle
-                                     x0, t0, tf, h, Q, R, M=50.0, tspan=u_df['time'], tsync='var')
+                                     x0, t0, tf, h, Q, R, M=50, tspan=u_df['time'], tsync='var')
 
     Q = np.diag(np.array([p, p, p]))
     tspan_ukf_aug, x_traj_ukf_aug = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model,   # Augmented UKF

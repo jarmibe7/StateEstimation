@@ -33,6 +33,8 @@ to optimize this code, but if you want to run them you can go to main() and unco
 
 ```
 
+Adding these three lines will bring the run time from about 3-5 minutes to about 30 minutes.
+
 #### Code Structure
 
 - run.py: (From top to bottom) First are functions used to evaluate filter performance and compare trajectories. Next are the motion and measurement model. Next are helper functions for plotting and test trajectory generation. Next are separate functions for each question associated with a plot or data. Finally, the main function.

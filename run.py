@@ -473,7 +473,7 @@ def aug():
         (x_traj_ukf_aug_none, 'Augmented UKF', disp_bots, 'purple', 0.2),
         (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
     ]
-    _ = plot_wheeled_robot(trajectories_comp, "Regular UKF vs. Augmented UKF Comparison with No Noise", "aug_reg.png", plot_dr=False)
+    _ = plot_wheeled_robot(trajectories_comp, "Regular UKF vs. Augmented UKF Comparison", "aug_reg.png", plot_dr=False)
     trajectories_no = [     # No noise
         (x_traj_dr, 'Dead-Reckoned', disp_bots, 'blue', 0.2),
         (x_traj_ukf_aug_none, 'Augmented UKF', disp_bots, 'purple', 0.2),
@@ -627,73 +627,73 @@ def all_filters():
     tf = u_df['time'].iloc[-1]
     h = 1/67.0  # Odometry logged at 67 Hz
     u_traj = np.array(u_df.iloc[:, 1:])
-    p = p=0.01
+    p = 0.01
     R = np.diag(np.array([p, p, p]))
     Q = np.diag(np.array([p, p]))
 
-    # tspan_ekf, x_traj_ekf = extended_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model,    # EKF
-    #                                          x0, t0, tf, h, Q, R, aug=True, tspan=u_df['time'], tsync='var')
+    tspan_ekf, x_traj_ekf = extended_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model,    # EKF
+                                             x0, t0, tf, h, Q, R, tspan=u_df['time'], tsync='var')
 
-    # tspan_ukf, x_traj_ukf = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model,    # Regular UKF
-    #                                          x0, t0, tf, h, Q, R, aug=False, tspan=u_df['time'], tsync='var')
+    tspan_ukf, x_traj_ukf = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model,    # Regular UKF
+                                             x0, t0, tf, h, Q, R, aug=False, tspan=u_df['time'], tsync='var')
     
     tspan_part, x_traj_part = particle(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model,    # Particle
-                                     x0, t0, tf, h, Q, R, M=10, tspan=u_df['time'], tsync='var')
+                                     x0, t0, tf, h, Q, R, M=50.0, tspan=u_df['time'], tsync='var')
 
-    # Q = np.diag(np.array([p, p, p]))
-    # tspan_ukf_aug, x_traj_ukf_aug = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model,   # Augmented UKF
-    #                                          x0, t0, tf, h, Q, R, aug=True, tspan=u_df['time'], tsync='var')
+    Q = np.diag(np.array([p, p, p]))
+    tspan_ukf_aug, x_traj_ukf_aug = unscented_kalman(u_traj, z_df, landmarks, subject_dict, motion_model, measurement_model,   # Augmented UKF
+                                             x0, t0, tf, h, Q, R, aug=True, tspan=u_df['time'], tsync='var')
     
     x_traj_gt = np.array(ground_truth.iloc[:, 1:])
     
     disp_bots = False
-    # trajectories_ekf = [     # EKF
-    #     (x_traj_ekf, 'EKF', disp_bots, 'pink', 0.2),
-    #     (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
-    # ]
-    # _ = plot_wheeled_robot(trajectories_ekf, "EKF vs. Ground Truth", "all_ekf.png", plot_dr=False)
-    # trajectories_ukf = [     # UKF
-    #     (x_traj_ukf, 'EKF', disp_bots, 'red', 0.2),
-    #     (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
-    # ]
-    # _ = plot_wheeled_robot(trajectories_ukf, "Regular UKF vs. Ground Truth", "all_ukf.png", plot_dr=False)
+    trajectories_ekf = [     # EKF
+        (x_traj_ekf, 'EKF', disp_bots, 'grey', 0.2),
+        (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
+    ]
+    _ = plot_wheeled_robot(trajectories_ekf, "EKF vs. Ground Truth", "all_ekf.png", plot_dr=False)
+    trajectories_ukf = [     # UKF
+        (x_traj_ukf, 'EKF', disp_bots, 'red', 0.2),
+        (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
+    ]
+    _ = plot_wheeled_robot(trajectories_ukf, "Regular UKF vs. Ground Truth", "all_ukf.png", plot_dr=False)
     trajectories_part = [     # Particle Filter
         (x_traj_part, 'Particle Filter', disp_bots, 'black', 0.2),
         (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
     ]
     _ = plot_wheeled_robot(trajectories_part, "Particle Filter vs. Ground Truth", "all_part.png", plot_dr=False)
-    # trajectories_ukf_aug = [     # Augmented UKF
-    #     (x_traj_ukf_aug, 'Augmented UKF', disp_bots, 'purple', 0.2),
-    #     (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
-    # ]
-    # _ = plot_wheeled_robot(trajectories_ukf_aug, "Augmented UKF vs. Ground Truth", "all_ukf_aug.png", plot_dr=False)
+    trajectories_ukf_aug = [     # Augmented UKF
+        (x_traj_ukf_aug, 'Augmented UKF', disp_bots, 'purple', 0.2),
+        (x_traj_gt, 'Ground Truth', disp_bots, 'orange', 0.2)
+    ]
+    _ = plot_wheeled_robot(trajectories_ukf_aug, "Augmented UKF vs. Ground Truth", "all_ukf_aug.png", plot_dr=False)
 
     # Compute statistics
-    # num_samples = x_traj_gt.shape[0] + (x_traj_ukf_aug.shape[0] - x_traj_gt.shape[0])//2
-    # traj_ekf_resamp = t_match(x_traj_ekf, num_samples)
-    # traj_part_resamp = t_match(x_traj_part, num_samples)
-    # traj_gt_resamp = t_match(x_traj_gt, num_samples)
-    # stats_ekf = compute_traj_statistics(traj_ekf_resamp, traj_gt_resamp)
-    # stats_part = compute_traj_statistics(traj_part_resamp, traj_gt_resamp)
+    num_samples = x_traj_gt.shape[0] + (x_traj_ukf_aug.shape[0] - x_traj_gt.shape[0])//2
+    traj_ekf_resamp = t_match(x_traj_ekf, num_samples)
+    traj_part_resamp = t_match(x_traj_part, num_samples)
+    traj_gt_resamp = t_match(x_traj_gt, num_samples)
+    stats_ekf = compute_traj_statistics(traj_ekf_resamp, traj_gt_resamp)
+    stats_part = compute_traj_statistics(traj_part_resamp, traj_gt_resamp)
 
-    # metrics_dict = {'ekf': stats_ekf, 'particle': stats_part}
-    # for key, value in metrics_dict.items():
-    #     met_path = os.path.join(METRICS_PATH, f'{key}_metrics.json')
-    #     with open(met_path, "w") as f:
-    #         json.dump(value, f, indent=4)
+    metrics_dict = {'ekf': stats_ekf, 'particle': stats_part}
+    for key, value in metrics_dict.items():
+        met_path = os.path.join(METRICS_PATH, f'{key}_metrics.json')
+        with open(met_path, "w") as f:
+            json.dump(value, f, indent=4)
     print("Done\n")
     
 
 def main():
     print("*** STARTING ***\n")
-    # q2()
-    # q3()
-    # q6()
-    # q8a()
-    # q8b_9()
+    q2()
+    q3()
+    q6()
+    q8a()
+    q8b_9()
     # aug()
     # study_comp()
-    all_filters()
+    # all_filters()
     
     print("\n*** DONE ***")
     return

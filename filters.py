@@ -8,7 +8,7 @@ Date: 09/19/2025
 """ 
 import numpy as np
 
-def normalize_angle(theta):
+def wrap_angle(theta):
     return np.arctan2(np.sin(theta), np.cos(theta))
 
 def dead_reckon(u_traj, motion_model, x0, t0, tf, h, Q=None, tspan=None, tsync='const'):
@@ -144,7 +144,7 @@ def extended_kalman(u_traj,
             
                 # Update prediction with measurement
                 z_diff = zt - zt_bar
-                z_diff[1] = normalize_angle(z_diff[1])
+                z_diff[1] = wrap_angle(z_diff[1])
                 mut = mut_bar + Kt @ (z_diff)
                 sigt = (np.eye(3) - Kt @ Ht) @ sigt_bar
 
@@ -156,7 +156,7 @@ def extended_kalman(u_traj,
             sigt = sigt_bar
             new_meas = False
 
-        mut[2] = normalize_angle(mut[2])
+        mut[2] = wrap_angle(mut[2])
         prev_u_time = t
         prev_control = ut
     return tspan, sim
@@ -183,11 +183,8 @@ def unscented_kalman(u_traj,
     Function that executes a control trajectory given motion and measurement models,
     using the UKF for state estimation.
     
-    Followed this tutorial by James Han on YouTube:
+    Referenced this video by James Han on YouTube:
     https://www.youtube.com/watch?v=c_6WDC66aVk
-
-    For augmented, also used this paper:
-    chrome-extension://efaidnbmnnnibpcajpcglclefindmkaj/https://skoge.folk.ntnu.no/prost/proceedings/acc05/PDFs/Papers/0724_FrB02_6.pdf
 
     Args:
         u_traj: Control trajectory
@@ -331,7 +328,7 @@ def unscented_kalman(u_traj,
                 # Incorporate measurement Gaussian into prediction to get posterior
                 Kt = sigt_xz @ np.linalg.inv(sigt_zz)   # Kalman gain
                 z_diff = zt - zt_bar
-                z_diff[1] = normalize_angle(z_diff[1])
+                z_diff[1] = wrap_angle(z_diff[1])
                 mut = mut_bar + Kt @ (z_diff)
                 sigt = sigt_bar - Kt @ sigt_zz @ Kt.T
                 # sigt = sigt_bar - Kt @ sigt_xz.T
@@ -344,7 +341,7 @@ def unscented_kalman(u_traj,
             mut = mut_bar
             sigt = sigt_bar
 
-        mut[2] = normalize_angle(mut[2])
+        mut[2] = wrap_angle(mut[2])
         prev_u_time = t
         prev_control = ut
     return tspan, sim
@@ -394,7 +391,7 @@ def particle(u_traj,
     prev_u_time = tspan[0] - h
     prev_control = u_traj[0]
     Xtbar = np.zeros((M,3))                         # Holds particles before resampling
-    W = np.zeros(M)                                 # Holds particle weights
+    W = np.ones(M)                                 # Holds particle weights
     Xt = x0 + np.random.multivariate_normal(np.zeros(len(x0)), R, size=M)               # Holds resampled particles
     rng = np.random.default_rng()                   # Random number generator for resampling
 
@@ -453,7 +450,7 @@ def particle(u_traj,
 
                     # Compute weight as log likelihood of true sensor reading given simulated sensor reading
                     # and combine with weight for other potential readings
-                    log_wm += np.log(max(pdf(zt, zm, Q), 1e-12))    # Don't take log of 0
+                    log_wm += np.log(max(pdf(wrap_angle(zt), wrap_angle(zm), Q), 1e-12))    # Don't take log of 0
 
                 W[m] = np.exp(log_wm)   # Convert back to regular likelihood
 
@@ -470,8 +467,8 @@ def particle(u_traj,
         else:
             Xt = Xtbar   # If no sampling, save all particles
 
-        mut = np.mean(Xt, axis=0)
-        mut[2] = normalize_angle(mut[2])
+        mut = np.average(Xt, axis=0, weights=W)
+        mut[2] = wrap_angle(mut[2])
         prev_u_time = t
         prev_control = ut
     return tspan, sim
